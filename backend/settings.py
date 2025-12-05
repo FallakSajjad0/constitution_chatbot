@@ -12,7 +12,7 @@ HF_EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "intfloat/e5-small")
 
 
 # -------- CHUNKING --------
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1500))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 500))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 150))
 
 # -------- RAG RETRIEVAL --------

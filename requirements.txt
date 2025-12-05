@@ -1,11 +1,33 @@
-langchain==0.3.7
-langchain-community==0.3.6
-langchain-openai==0.2.3
-chromadb==0.5.11
-fastapi==0.115.2
-uvicorn==0.31.1
-python-dotenv==1.0.1
-pydantic==2.9.2
-tiktoken==0.7.0
-pypdf==5.0.0
-orjson==3.10.10
+﻿# CORE BACKEND
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-dotenv==1.0.0
+pydantic==2.5.0
+starlette==0.27.0
+
+# LANGCHAIN
+langchain==0.0.350
+langchain-community==0.0.21
+langchain-core==0.1.16
+langchain-text-splitters==0.0.1
+langchain-chroma==0.1.0
+
+# VECTOR DATABASE
+chromadb==0.4.22
+
+# EMBEDDINGS
+sentence-transformers==2.2.2
+huggingface-hub==0.20.3
+transformers==4.35.2
+
+# PDF
+pypdf==3.17.4
+
+# TORCH (regular version)
+torch==2.1.0
+
+# UTILITIES
+numpy==1.24.4
+requests==2.31.0
+aiofiles==23.2.1
+tqdm==4.66.1

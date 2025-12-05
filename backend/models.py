@@ -6,7 +6,7 @@ class ChatRequest(BaseModel):
     context: Optional[str] = Field(None, description="Optional context for the query")
 
     class Config:
-        schema_median = {
+        schema_extra = {  # fixed typo from schema_median → schema_extra
             "example": {
                 "query": "What is the capital of France?",
                 "context": "Geography"
@@ -18,10 +18,9 @@ class ChatResponse(BaseModel):
     sources: List[str] = Field(..., description="List of sources for the answer")
 
     class Config:
-        schema_median = {
+        schema_extra = {  # fixed typo from schema_median → schema_extra
             "example": {
                 "answer": "The capital of France is Paris.",
                 "sources": ["https://example.com/france", "https://example.com/paris"]
             }
         }
-

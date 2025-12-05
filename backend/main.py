@@ -6,7 +6,7 @@ from rag_chain import answer_question
 import os
 
 # Load .env from backend folder
-env_path = os.path.join(os.path.dirname(__file__), ".env")
+env_path = os.path.join(os.path.dirname(__file__), ".env")  # fixed __file__
 load_dotenv(env_path)
 
 app = FastAPI(

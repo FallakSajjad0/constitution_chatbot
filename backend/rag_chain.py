@@ -1,22 +1,28 @@
 import os
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 
 # ---------------------------------------------------
-# 1️⃣  LOAD EMBEDDINGS (sentence-transformers/all-mpnet-base-v2)
+# 1️⃣  LOAD EMBEDDINGS
 # ---------------------------------------------------
 embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-mpnet-base-v2",
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
     model_kwargs={'device': 'cpu'}
 )
 
 # ---------------------------------------------------
-# 2️⃣  LOAD CHROMA DB
+# 2️⃣  LOAD CHROMA DB (from project root)
 # ---------------------------------------------------
-DB_DIR = os.path.join(os.path.dirname(__file__), "db")
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # fixed __file__
+DB_DIR = os.path.join(PROJECT_ROOT, "db")
+
+print(f"📁 Loading vector database from: {DB_DIR}")
+
+if not os.path.exists(DB_DIR):
+    raise FileNotFoundError(f"Vector database not found at {DB_DIR}. Run ingestion first.")
+
 vectorstore = Chroma(
     persist_directory=DB_DIR,
     embedding_function=embeddings
@@ -24,44 +30,17 @@ vectorstore = Chroma(
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
 # ---------------------------------------------------
-# 3️⃣  LOAD LOCAL CAUSAL MODEL (for text generation)
+# 3️⃣  SIMPLE LLM FUNCTION
 # ---------------------------------------------------
-CAUSAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "causal_model")
-print("🔄 Loading causal model from:", CAUSAL_MODEL_PATH)
-
-# Check if the model directory exists
-if not os.path.exists(CAUSAL_MODEL_PATH):
-    raise FileNotFoundError(f"Model directory not found at {CAUSAL_MODEL_PATH}. Please ensure the model is downloaded.")
-
-# Load tokenizer and model from the local path
-tokenizer = AutoTokenizer.from_pretrained(CAUSAL_MODEL_PATH, local_files_only=True)
-model = AutoModelForCausalLM.from_pretrained(
-    CAUSAL_MODEL_PATH,
-    device_map="auto",
-    torch_dtype="auto",
-    low_cpu_mem_usage=True
-)
-
-# Create a pipeline for text generation
-llm_pipeline = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    max_new_tokens=300,
-    temperature=0.2,
-    num_return_sequences=1,
-)
-
-# LangChain wrapper for local model
-def local_llm(inputs: dict) -> str:
-    formatted_prompt = inputs["prompt"]
-    result = llm_pipeline(formatted_prompt)
-    # Extract only the generated text after the prompt
-    response = result[0]['generated_text'].strip()
-    # Remove the prompt from the response if it's included
-    if formatted_prompt in response:
-        response = response.replace(formatted_prompt, "").strip()
-    return response
+def simple_llm(inputs: dict) -> str:
+    context = inputs.get("context", "")
+    question = inputs.get("question", "")
+    
+    if context:
+        passages = context.split("\n\n")
+        if passages:
+            return f"Based on the constitution: {passages[0][:300]}..."
+    return "I don't have enough information to answer that question."
 
 # ---------------------------------------------------
 # 4️⃣  PROMPT TEMPLATE
@@ -69,29 +48,21 @@ def local_llm(inputs: dict) -> str:
 prompt_template = PromptTemplate(
     input_variables=["context", "question"],
     template="""
-    Context: {context}
-
+    You are a constitutional law assistant. Answer based only on this context:
+    
+    {context}
+    
     Question: {question}
-
-    Answer the question based solely on the context provided above. Do not repeat the context or the question in your answer. Provide a concise and accurate response.
+    
+    Answer concisely. If the answer isn't in the context, say "I cannot find this information in the constitution documents."
     """
 )
 
 # ---------------------------------------------------
-# 5️⃣  BUILD CHAIN
+# 5️⃣  HELPER FUNCTIONS
 # ---------------------------------------------------
-
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
-
-chain = (
-    {
-        "context": retriever | format_docs,
-        "question": RunnablePassthrough()
-    }
-    | prompt_template
-    | local_llm
-)
 
 # ---------------------------------------------------
 # 6️⃣  FINAL ANSWER FUNCTION
@@ -99,15 +70,27 @@ chain = (
 def answer_question(query: str):
     try:
         docs = retriever.invoke(query)
+        
         if not docs:
-            return {"answer": "No relevant information found.", "sources": []}
+            return {
+                "answer": "I cannot find relevant information in the constitution documents.",
+                "sources": []
+            }
+        
         context = format_docs(docs)
         formatted_prompt = prompt_template.format(context=context, question=query)
-        result = local_llm({"prompt": formatted_prompt})
-
-        # Post-process the result to ensure it is concise and relevant
-        sentences = [sentence.strip() for sentence in result.split('.') if sentence.strip()]
-        concise_answer = sentences[0] if sentences else result
-        return {"answer": concise_answer, "sources": [doc.metadata.get("source", "unknown") for doc in docs]}
+        result = simple_llm({"prompt": formatted_prompt, "context": context, "question": query})
+        sources = list(set([doc.metadata.get("source", "Unknown") for doc in docs]))
+        
+        return {
+            "answer": result,
+            "sources": sources,
+            "relevant_docs": len(docs)
+        }
+        
     except Exception as e:
-        return {"answer": f"Error: {str(e)}", "sources": []}
+        return {
+            "answer": f"Error processing your question: {str(e)}",
+            "sources": [],
+            "error": str(e)
+        }
