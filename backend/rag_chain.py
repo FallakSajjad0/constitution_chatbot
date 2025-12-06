@@ -1,96 +1,68 @@
+# backend/rag_chain.py
 import os
+from dotenv import load_dotenv
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough
+from huggingface_hub import InferenceClient
 
-# ---------------------------------------------------
-# 1️⃣  LOAD EMBEDDINGS
-# ---------------------------------------------------
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2",
-    model_kwargs={'device': 'cpu'}
-)
+load_dotenv()  # loads .env from project root
 
-# ---------------------------------------------------
-# 2️⃣  LOAD CHROMA DB (from project root)
-# ---------------------------------------------------
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # fixed __file__
-DB_DIR = os.path.join(PROJECT_ROOT, "db")
+HF_TOKEN = os.getenv("HF_TOKEN")
+if not HF_TOKEN:
+    raise ValueError("Put HF_TOKEN in constitution_chatbot/.env")
 
-print(f"📁 Loading vector database from: {DB_DIR}")
+# DB path
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(ROOT, "db")
 
-if not os.path.exists(DB_DIR):
-    raise FileNotFoundError(f"Vector database not found at {DB_DIR}. Run ingestion first.")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+vectorstore = Chroma(persist_directory=DB_PATH, embedding_function=embeddings)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
 
-vectorstore = Chroma(
-    persist_directory=DB_DIR,
-    embedding_function=embeddings
-)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+# Best free model Dec 2025
+client = InferenceClient(model="meta-llama/Llama-3.1-8B-Instruct", token=HF_TOKEN)
 
-# ---------------------------------------------------
-# 3️⃣  SIMPLE LLM FUNCTION
-# ---------------------------------------------------
-def simple_llm(inputs: dict) -> str:
-    context = inputs.get("context", "")
-    question = inputs.get("question", "")
-    
-    if context:
-        passages = context.split("\n\n")
-        if passages:
-            return f"Based on the constitution: {passages[0][:300]}..."
-    return "I don't have enough information to answer that question."
+SYSTEM_PROMPT = """You are a Supreme Court Justice of Pakistan specializing only in the 1973 Constitution.
+Answer using ONLY the context below. Quote exact Articles. Never add external knowledge.
 
-# ---------------------------------------------------
-# 4️⃣  PROMPT TEMPLATE
-# ---------------------------------------------------
-prompt_template = PromptTemplate(
-    input_variables=["context", "question"],
-    template="""
-    You are a constitutional law assistant. Answer based only on this context:
-    
-    {context}
-    
-    Question: {question}
-    
-    Answer concisely. If the answer isn't in the context, say "I cannot find this information in the constitution documents."
-    """
-)
+If the answer is not in context → reply exactly:
+"This specific information is not present in the retrieved constitutional provisions."
 
-# ---------------------------------------------------
-# 5️⃣  HELPER FUNCTIONS
-# ---------------------------------------------------
+Answer in 4–7 clear sentences. Always start with the relevant Article number."""
+
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return "\n\n".join(
+        f"[{i+1}] {os.path.basename(doc.metadata.get('source',''))}\n{doc.page_content.strip()}"
+        for i, doc in enumerate(docs)
+    )
 
-# ---------------------------------------------------
-# 6️⃣  FINAL ANSWER FUNCTION
-# ---------------------------------------------------
-def answer_question(query: str):
+def answer_question(query: str) -> dict:
     try:
         docs = retriever.invoke(query)
-        
         if not docs:
-            return {
-                "answer": "I cannot find relevant information in the constitution documents.",
-                "sources": []
-            }
-        
+            return {"answer": "No relevant articles found.", "sources": [], "relevant_docs": 0}
+
         context = format_docs(docs)
-        formatted_prompt = prompt_template.format(context=context, question=query)
-        result = simple_llm({"prompt": formatted_prompt, "context": context, "question": query})
-        sources = list(set([doc.metadata.get("source", "Unknown") for doc in docs]))
-        
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT + f"\n\nContext:\n{context}"},
+            {"role": "user", "content": query}
+        ]
+
+        resp = client.chat_completion(
+            messages=messages,
+            max_tokens=600,
+            temperature=0.05,
+            top_p=0.95,
+            stream=False
+        )
+
+        sources = list({os.path.basename(doc.metadata.get("source","Unknown")) for doc in docs})
+
         return {
-            "answer": result,
+            "answer": resp.choices[0].message.content.strip(),
             "sources": sources,
             "relevant_docs": len(docs)
         }
-        
     except Exception as e:
-        return {
-            "answer": f"Error processing your question: {str(e)}",
-            "sources": [],
-            "error": str(e)
-        }
+        return {"answer": f"Error: {str(e)}", "sources": [], "relevant_docs": 0}

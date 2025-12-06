@@ -1,35 +1,34 @@
-from dotenv import load_dotenv
+# backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from models import ChatRequest, ChatResponse
-from rag_chain import answer_question
+from pydantic import BaseModel
+from typing import List
 import os
+from rag_chain import answer_question
 
-# Load .env from backend folder
-env_path = os.path.join(os.path.dirname(__file__), ".env")  # fixed __file__
-load_dotenv(env_path)
-
-app = FastAPI(
-    title="Pakistan Constitution RAG Chatbot",
-    version="1.0.0"
-)
+app = FastAPI(title="Pakistan Constitution AI")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+class Query(BaseModel):
+    query: str
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+class Response(BaseModel):
+    answer: str
+    sources: List[str] = []
+    relevant_docs: int = 0
+
+@app.get("/")
+def home():
+    return {"message": "Pakistan Constitution AI Assistant – Running!"}
+
+@app.post("/chat", response_model=Response)
+async def chat(req: Query):
     result = answer_question(req.query)
-    return ChatResponse(
-        answer=result["answer"],
-        sources=result["sources"]
-    )
+    return Response(**result)
