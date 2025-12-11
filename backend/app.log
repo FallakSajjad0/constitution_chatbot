@@ -1,0 +1,386 @@
+2025-12-05 13:46:26,663 - main - INFO - ==================================================
+2025-12-05 13:46:26,663 - main - INFO - Pakistan Constitution RAG Chatbot Starting...
+2025-12-05 13:46:26,663 - main - INFO - Timestamp: 2025-12-05T13:46:26.663700
+2025-12-05 13:46:27,116 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 13:46:32,133 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 13:46:32,315 - main - INFO - RAG pipeline initialized.
+2025-12-05 13:46:32,315 - main - INFO - ==================================================
+2025-12-05 13:46:55,311 - main - INFO - Received query: about article 25A...
+2025-12-05 13:46:56,083 - rag_chain - INFO - Loading LLM...
+2025-12-05 13:46:56,086 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 13:46:56,215 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 13:47:05,286 - main - INFO - Received query: about article 25A...
+2025-12-05 13:47:05,477 - rag_chain - INFO - Loading LLM...
+2025-12-05 13:47:05,480 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 13:47:05,491 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 13:47:37,385 - main - INFO - ==================================================
+2025-12-05 13:47:37,385 - main - INFO - Pakistan Constitution RAG Chatbot Shutting Down...
+2025-12-05 13:47:37,385 - main - INFO - Timestamp: 2025-12-05T13:47:37.385259
+2025-12-05 13:47:37,394 - main - INFO - ==================================================
+2025-12-05 13:47:57,046 - main - INFO - ==================================================
+2025-12-05 13:47:57,046 - main - INFO - Pakistan Constitution RAG Chatbot Starting...
+2025-12-05 13:47:57,046 - main - INFO - Timestamp: 2025-12-05T13:47:57.046001
+2025-12-05 13:47:57,423 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 13:48:02,955 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 13:48:03,127 - main - INFO - RAG pipeline initialized.
+2025-12-05 13:48:03,127 - main - INFO - ==================================================
+2025-12-05 13:48:21,442 - main - INFO - Received query: Article 25A...
+2025-12-05 13:48:22,163 - rag_chain - INFO - Loading LLM...
+2025-12-05 13:48:22,187 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 13:48:22,284 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 13:48:38,181 - main - INFO - Received query: Article 25A...
+2025-12-05 13:48:38,404 - rag_chain - INFO - Loading LLM...
+2025-12-05 13:48:38,419 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 13:48:38,461 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 13:59:48,258 - main - INFO - ==================================================
+2025-12-05 13:59:48,258 - main - INFO - Pakistan Constitution RAG Chatbot Shutting Down...
+2025-12-05 13:59:48,258 - main - INFO - Timestamp: 2025-12-05T13:59:48.258100
+2025-12-05 13:59:48,258 - main - INFO - ==================================================
+2025-12-05 14:00:13,572 - main - INFO - ==================================================
+2025-12-05 14:00:13,572 - main - INFO - Pakistan Constitution RAG Chatbot Starting...
+2025-12-05 14:00:13,572 - main - INFO - Timestamp: 2025-12-05T14:00:13.572615
+2025-12-05 14:00:13,990 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:00:21,236 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:00:21,419 - main - INFO - RAG pipeline initialized.
+2025-12-05 14:00:21,419 - main - INFO - ==================================================
+2025-12-05 14:00:39,317 - main - INFO - ==================================================
+2025-12-05 14:00:39,318 - main - INFO - Pakistan Constitution RAG Chatbot Shutting Down...
+2025-12-05 14:00:39,320 - main - INFO - Timestamp: 2025-12-05T14:00:39.320197
+2025-12-05 14:00:39,321 - main - INFO - ==================================================
+2025-12-05 14:01:06,415 - main - INFO - ================================================================================
+2025-12-05 14:01:06,416 - main - INFO - Starting Pakistan Constitution RAG Chatbot
+2025-12-05 14:01:06,420 - main - INFO - Launch time: 2025-12-05T14:01:06.420478
+2025-12-05 14:01:06,421 - main - INFO - Model Path: D:\Fallak\data scraping\Chat-bot\backend\causal_model
+2025-12-05 14:01:06,422 - main - INFO - DB Path: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:01:07,012 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:01:12,607 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:01:13,077 - main - INFO - RAG Pipeline successfully initialized.
+2025-12-05 14:01:13,077 - main - INFO - ================================================================================
+2025-12-05 14:01:13,077 - main - INFO - ================================================================================
+2025-12-05 14:01:13,077 - main - INFO - Shutting down Pakistan Constitution RAG Chatbot
+2025-12-05 14:01:13,077 - main - INFO - Shutdown time: 2025-12-05T14:01:13.077027
+2025-12-05 14:01:13,100 - main - INFO - ================================================================================
+2025-12-05 14:01:32,436 - main - INFO - ================================================================================
+2025-12-05 14:01:32,436 - main - INFO - Starting Pakistan Constitution RAG Chatbot
+2025-12-05 14:01:32,436 - main - INFO - Launch time: 2025-12-05T14:01:32.436897
+2025-12-05 14:01:32,436 - main - INFO - Model Path: D:\Fallak\data scraping\Chat-bot\backend\causal_model
+2025-12-05 14:01:32,436 - main - INFO - DB Path: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:01:32,786 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:01:38,373 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:01:38,514 - main - INFO - RAG Pipeline successfully initialized.
+2025-12-05 14:01:38,514 - main - INFO - ================================================================================
+2025-12-05 14:02:07,923 - main - INFO - Incoming Query: Article 25A...
+2025-12-05 14:02:07,924 - rag_chain - INFO - 
+======================================================================
+Query: Article 25A
+======================================================================
+2025-12-05 14:06:40,753 - main - INFO - ================================================================================
+2025-12-05 14:06:40,753 - main - INFO - Shutting down Pakistan Constitution RAG Chatbot
+2025-12-05 14:06:40,753 - main - INFO - Shutdown time: 2025-12-05T14:06:40.753725
+2025-12-05 14:06:40,753 - main - INFO - ================================================================================
+2025-12-05 14:07:30,057 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:07:39,929 - INFO - Loading Chroma DB from: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:07:40,015 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:07:40,185 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:07:40,188 - INFO - Shutting down...
+2025-12-05 14:08:02,095 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:08:07,213 - INFO - Loading Chroma DB from: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:08:07,292 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:08:07,469 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:08:07,477 - INFO - Shutting down...
+2025-12-05 14:08:28,103 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:08:32,625 - INFO - Loading Chroma DB from: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:08:32,712 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:08:32,853 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:16:41,240 - INFO - Shutting down...
+2025-12-05 14:17:06,822 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:17:07,775 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:17:11,118 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:17:11,247 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:17:11,247 - INFO - Shutting down...
+2025-12-05 14:17:11,607 - WARNING - No documents retrieved for query.
+2025-12-05 14:17:12,483 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:17:12,595 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:17:12,611 - INFO - Shutting down...
+2025-12-05 14:17:38,267 - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:17:43,151 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:17:43,856 - INFO - RAG pipeline loaded successfully.
+2025-12-05 14:17:43,866 - INFO - Shutting down...
+2025-12-05 14:18:08,995 - main - INFO - ================================================================================
+2025-12-05 14:18:08,995 - main - INFO - Starting Pakistan Constitution RAG Chatbot
+2025-12-05 14:18:08,996 - main - INFO - Launch time: 2025-12-05T14:18:08.996923
+2025-12-05 14:18:08,996 - main - INFO - Model Path: D:\Fallak\data scraping\Chat-bot\backend\causal_model
+2025-12-05 14:18:08,997 - main - INFO - DB Path: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:18:09,342 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:18:14,072 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:18:14,216 - main - INFO - RAG Pipeline successfully initialized.
+2025-12-05 14:18:14,216 - main - INFO - ================================================================================
+2025-12-05 14:18:14,216 - main - INFO - ================================================================================
+2025-12-05 14:18:14,216 - main - INFO - Shutting down Pakistan Constitution RAG Chatbot
+2025-12-05 14:18:14,216 - main - INFO - Shutdown time: 2025-12-05T14:18:14.216100
+2025-12-05 14:18:14,216 - main - INFO - ================================================================================
+2025-12-05 14:18:33,618 - main - INFO - ================================================================================
+2025-12-05 14:18:33,618 - main - INFO - Starting Pakistan Constitution RAG Chatbot
+2025-12-05 14:18:33,618 - main - INFO - Launch time: 2025-12-05T14:18:33.618926
+2025-12-05 14:18:33,618 - main - INFO - Model Path: D:\Fallak\data scraping\Chat-bot\backend\causal_model
+2025-12-05 14:18:33,618 - main - INFO - DB Path: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:18:33,990 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:18:38,611 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:18:38,785 - main - INFO - RAG Pipeline successfully initialized.
+2025-12-05 14:18:38,786 - main - INFO - ================================================================================
+2025-12-05 14:20:05,027 - main - INFO - ================================================================================
+2025-12-05 14:20:05,027 - main - INFO - Shutting down Pakistan Constitution RAG Chatbot
+2025-12-05 14:20:05,027 - main - INFO - Shutdown time: 2025-12-05T14:20:05.027222
+2025-12-05 14:20:05,036 - main - INFO - ================================================================================
+2025-12-05 14:20:31,018 - main - INFO - ================================================================================
+2025-12-05 14:20:31,018 - main - INFO - Starting Pakistan Constitution RAG Chatbot
+2025-12-05 14:20:31,018 - main - INFO - Launch time: 2025-12-05T14:20:31.018343
+2025-12-05 14:20:31,018 - main - INFO - Model Path: D:\Fallak\data scraping\Chat-bot\backend\causal_model
+2025-12-05 14:20:31,018 - main - INFO - DB Path: D:\Fallak\data scraping\Chat-bot\backend\db
+2025-12-05 14:20:31,617 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:20:36,950 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:20:37,248 - main - INFO - RAG Pipeline successfully initialized.
+2025-12-05 14:20:37,248 - main - INFO - ================================================================================
+2025-12-05 14:20:37,249 - main - INFO - ================================================================================
+2025-12-05 14:20:37,250 - main - INFO - Shutting down Pakistan Constitution RAG Chatbot
+2025-12-05 14:20:37,250 - main - INFO - Shutdown time: 2025-12-05T14:20:37.250708
+2025-12-05 14:20:37,251 - main - INFO - ================================================================================
+2025-12-05 14:21:20,687 - main - INFO - ==================================================
+2025-12-05 14:21:20,691 - main - INFO - Pakistan Constitution RAG Chatbot Starting...
+2025-12-05 14:21:20,691 - main - INFO - Timestamp: 2025-12-05T14:21:20.691402
+2025-12-05 14:21:21,044 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-12-05 14:21:25,799 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-12-05 14:21:25,954 - main - INFO - RAG pipeline initialized.
+2025-12-05 14:21:25,955 - main - INFO - ==================================================
+2025-12-05 14:21:39,416 - main - INFO - Received query: Article 25A...
+2025-12-05 14:21:40,434 - rag_chain - INFO - Loading LLM...
+2025-12-05 14:21:40,518 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 14:21:40,601 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 14:21:47,782 - main - INFO - Received query: Article 25A...
+2025-12-05 14:21:47,989 - rag_chain - INFO - Loading LLM...
+2025-12-05 14:21:47,989 - rag_chain - ERROR - Error in RAG pipeline: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 479, in cached_files
+    hf_hub_download(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 130, in answer_question
+    answer = self.generate_answer(query, context)
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 91, in generate_answer
+    self.load_llm()
+  File "D:\Fallak\data scraping\Chat-bot\backend\rag_chain.py", line 37, in load_llm
+    self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, local_files_only=True)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 1089, in from_pretrained
+    tokenizer_config = get_tokenizer_config(pretrained_model_name_or_path, **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\models\auto\tokenization_auto.py", line 921, in get_tokenizer_config
+    resolved_config_file = cached_file(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 322, in cached_file
+    file = cached_files(path_or_repo_id=path_or_repo_id, filenames=[filename], **kwargs)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 531, in cached_files
+    resolved_files = [
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 532, in <listcomp>
+    _get_cache_file_to_return(path_or_repo_id, filename, cache_dir, revision, repo_type)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\transformers\utils\hub.py", line 143, in _get_cache_file_to_return
+    resolved_file = try_to_load_from_cache(
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 106, in _inner_fn
+    validate_repo_id(arg_value)
+  File "D:\Fallak\data scraping\Chat-bot\env310\lib\site-packages\huggingface_hub\utils\_validators.py", line 160, in validate_repo_id
+    raise HFValidationError(
+huggingface_hub.errors.HFValidationError: Repo id must use alphanumeric chars, '-', '_' or '.'. The name cannot start or end with '-' or '.' and the maximum length is 96: '../causal_model'.
+2025-12-05 14:21:48,011 - main - INFO - Successfully processed query with 0 sources
+2025-12-05 14:22:22,433 - main - INFO - ==================================================
+2025-12-05 14:22:22,433 - main - INFO - Pakistan Constitution RAG Chatbot Shutting Down...
+2025-12-05 14:22:22,433 - main - INFO - Timestamp: 2025-12-05T14:22:22.433117
+2025-12-05 14:22:22,433 - main - INFO - ==================================================
+2025-12-06 18:23:24,352 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-MiniLM-L6-v2
+2025-12-06 18:23:31,726 - main - INFO - Received query: Hello!
+2025-12-06 18:23:31,732 - main - INFO - Generated response for query: Hello!...
+2025-12-06 18:23:31,733 - main - INFO - Sources used: []
+2025-12-06 18:23:31,745 - main - INFO - Received query: What are fundamental rights?
+2025-12-06 18:23:32,692 - main - INFO - Generated response for query: What are fundamental rights?...
+2025-12-06 18:23:32,692 - main - INFO - Sources used: []
+2025-12-06 18:23:32,850 - main - INFO - Received query: Tell me about freedom of speech
+2025-12-06 18:23:32,912 - main - INFO - Generated response for query: Tell me about freedom of speech...
+2025-12-06 18:23:32,913 - main - INFO - Sources used: []

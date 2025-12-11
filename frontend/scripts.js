@@ -11,12 +11,11 @@ const toggleSidebarBtn = document.getElementById("toggle-sidebar");
 let chatHistory = [];
 let currentChatId = null;
 
-// Load chat history from memory
+// Load chat history
 function loadChatHistory() {
-    const history = chatHistory;
     historySection.innerHTML = '<div class="history-label">Today</div>';
 
-    history.forEach((chat, index) => {
+    chatHistory.forEach((chat, index) => {
         const item = document.createElement("div");
         item.classList.add("history-item");
         if (index === currentChatId) item.classList.add("active");
@@ -40,7 +39,6 @@ function loadChatHistory() {
     });
 }
 
-// Delete chat
 function deleteChat(chatId) {
     if (chatHistory.length === 1) {
         alert("You must have at least one chat!");
@@ -50,7 +48,6 @@ function deleteChat(chatId) {
     if (confirm("Are you sure you want to delete this chat?")) {
         chatHistory.splice(chatId, 1);
 
-        // Adjust currentChatId
         if (currentChatId === chatId) {
             currentChatId = Math.max(0, chatId - 1);
             loadChat(currentChatId);
@@ -62,35 +59,36 @@ function deleteChat(chatId) {
     }
 }
 
-// Create new chat
 function createNewChat() {
     const chatId = chatHistory.length;
+
     chatHistory.push({
         id: chatId,
         title: "New Chat",
         messages: []
     });
+
     currentChatId = chatId;
 
-    chatContainer.innerHTML = '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Feel free to ask me any questions about the Constitution of Pakistan.</div>';
+    chatContainer.innerHTML =
+        '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Ask anything from the Pakistan Constitution PDF.</div>';
+
     loadChatHistory();
 }
 
-// Load specific chat
 function loadChat(chatId) {
     currentChatId = chatId;
     const chat = chatHistory[chatId];
 
-    chatContainer.innerHTML = '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Feel free to ask me any questions about the Constitution of Pakistan.</div>';
+    chatContainer.innerHTML =
+        '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Ask anything from the Pakistan Constitution PDF.</div>';
 
-    chat.messages.forEach(msg => {
-        addMessage(msg.text, msg.sender, false, false);
-    });
+    chat.messages.forEach(msg => addMessage(msg.text, msg.sender, false, false));
 
     loadChatHistory();
 }
 
-function addMessage(text, sender, isThinking = false, saveToHistory = true) {
+function addMessage(text, sender, isThinking = false, save = true) {
     const msg = document.createElement("div");
     msg.classList.add("message", sender);
     if (isThinking) msg.classList.add("thinking");
@@ -99,12 +97,12 @@ function addMessage(text, sender, isThinking = false, saveToHistory = true) {
     chatContainer.appendChild(msg);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 
-    if (saveToHistory && currentChatId !== null) {
+    if (save && currentChatId !== null) {
         chatHistory[currentChatId].messages.push({ text, sender });
 
-        // Update chat title with first user message
         if (sender === "user" && chatHistory[currentChatId].title === "New Chat") {
-            chatHistory[currentChatId].title = text.substring(0, 30) + (text.length > 30 ? "..." : "");
+            chatHistory[currentChatId].title =
+                text.substring(0, 30) + (text.length > 30 ? "..." : "");
             loadChatHistory();
         }
     }
@@ -116,10 +114,7 @@ async function sendMessage() {
     const text = userInput.value.trim();
     if (text === "") return;
 
-    // Create new chat if none exists
-    if (currentChatId === null) {
-        createNewChat();
-    }
+    if (currentChatId === null) createNewChat();
 
     addMessage(text, "user");
     userInput.value = "";
@@ -132,7 +127,9 @@ async function sendMessage() {
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ query: text }),
+
+            // ✅ FIXED — Must be "question", NOT "query"
+            body: JSON.stringify({ question: text }),
         });
 
         const data = await response.json();
@@ -142,20 +139,22 @@ async function sendMessage() {
 
     } catch (error) {
         thinkingMsg.remove();
-        addMessage("⚠️ Error connecting to backend. Please make sure the server is running.", "bot");
+        addMessage("⚠️ Error connecting to backend. Make sure server is running.", "bot");
         console.error("Backend error:", error);
     }
 }
 
-// Toggle sidebar on mobile
 toggleSidebarBtn.addEventListener("click", () => {
     sidebar.classList.toggle("open");
 });
 
-// Close sidebar when clicking outside on mobile
 document.addEventListener("click", (e) => {
-    if (window.innerWidth <= 768 && sidebar.classList.contains("open") &&
-        !sidebar.contains(e.target) && e.target !== toggleSidebarBtn) {
+    if (
+        window.innerWidth <= 768 &&
+        sidebar.classList.contains("open") &&
+        !sidebar.contains(e.target) &&
+        e.target !== toggleSidebarBtn
+    ) {
         sidebar.classList.remove("open");
     }
 });
@@ -167,6 +166,5 @@ userInput.addEventListener("keypress", (e) => {
     if (e.key === "Enter") sendMessage();
 });
 
-// Initialize with first chat
 createNewChat();
 userInput.focus();
