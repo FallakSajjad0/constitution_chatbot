@@ -1,4 +1,4 @@
-# ingest.py - Optimized for constitutional/legal PDFs
+# ingest.py - Opti
 import os
 import logging
 import hashlib

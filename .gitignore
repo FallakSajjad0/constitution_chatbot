@@ -1,3 +1,8 @@
-env310/
+myenv/
 backend/chroma_db
+backend/data/__pycache__/
+.env
+backend/chroma_db/
 backend/data/
+__pycache__/
+

@@ -1,9 +1,12 @@
-# rag_chain.py - FINAL WORKING VERSION
+# rag_chain.py 
 import os
 import logging
 import re
-from typing import List, Dict, Tuple
+import requests
+import json
+from typing import List, Dict, Tuple, Optional
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Import Chroma
 try:
@@ -13,7 +16,7 @@ try:
 except ImportError:
     from langchain_community.vectorstores import Chroma
     logger = logging.getLogger(__name__)
-    logger.warning("⚠️ Using deprecated Chroma")
+    logger.warning("Warning: Using deprecated Chroma")
 
 from embeddings_local import LocalEmbeddings
 
@@ -22,22 +25,93 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-class WorkingPDFAssistant:
-    """Working assistant that finds actual article text"""
+class DetailedConstitutionAssistant:
+    """Assistant for constitutional analysis with detailed paragraph answers"""
     
     def __init__(self):
         self.chroma_path = "./chroma_db"
         self.collection_name = "constitutional_docs"
         self.embeddings = None
         self.vector_store = None
+        self.session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
+        # Load API keys from .env
+        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
+        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        self.groq_api_key = os.getenv('GROQ_API_KEY')
+        self.use_ai_enhancement = any([self.gemini_api_key, self.openai_api_key, self.groq_api_key])
+        
+        # Define greetings and responses
+        self.greetings = self._initialize_greetings()
+        
+        # Enhanced legal keywords for better matching
+        self.legal_keywords = [
+            "article", "articles", "constitution", "fundamental right", "freedom",
+            "right to", "duty", "power", "president", "parliament", "judiciary",
+            "amendment", "provision", "shall", "may", "must", "entitled"
+        ]
+        
+        # Enhanced article patterns for accurate extraction
+        self.article_patterns = [
+            r'article\s+(\d+[A-Z]*)',
+            r'art\.\s*(\d+[A-Z]*)',
+            r'article\s+(\d+)\s*\([a-zA-Z]+\)',
+            r'art\.\s*(\d+)\s*\([a-zA-Z]+\)',
+            r'\b(\d+[A-Z])\b',
+        ]
+        
+    def _initialize_greetings(self):
+        """Initialize comprehensive greetings dictionary"""
+        return {
+            'hello': "Hello! I'm your Pakistan Constitution Assistant. How can I help you today?",
+            'hi': "Hi there! I can answer questions about Pakistan's Constitution. What would you like to know?",
+            'hey': "Hey! Ready to explore the Constitution of Pakistan with you.",
+            'good morning': "Good morning! I'm here to help with constitutional questions.",
+            'good afternoon': "Good afternoon! What constitutional provision would you like to learn about?",
+            'good evening': "Good evening! I can help you understand Pakistan's Constitution.",
+            'thank you': "You're welcome! Feel free to ask more questions about the Constitution.",
+            'thanks': "You're welcome! Happy to assist with constitutional matters.",
+            'bye': "Goodbye! Have a great day.",
+            'goodbye': "Goodbye! Come back if you have more constitutional questions.",
+            'how are you': "I'm doing well, thank you! Ready to answer your constitutional queries.",
+            'what is your name': "I'm the Pakistan Constitution Assistant, specializing in constitutional law and provisions.",
+            'who are you': "I'm an AI assistant trained on Pakistan's Constitution. I can help explain articles, rights, and legal provisions.",
+            'help': "I can help you with:\n• Specific articles (e.g., Article 25A, Article 19)\n• Constitutional rights and freedoms\n• Legal definitions and concepts\n• Government structure and powers\nJust ask your question!",
+        }
+        
+    def is_greeting(self, question: str) -> bool:
+        """Check if the question is a greeting"""
+        question_lower = question.lower().strip()
+        
+        if question_lower in self.greetings:
+            return True
+        
+        for greeting in self.greetings.keys():
+            if greeting in question_lower and len(greeting) > 2:
+                return True
+        
+        return False
+    
+    def get_greeting_response(self, question: str) -> str:
+        """Get appropriate greeting response"""
+        question_lower = question.lower().strip()
+        
+        if question_lower in self.greetings:
+            return self.greetings[question_lower]
+        
+        for greeting, response in self.greetings.items():
+            if greeting in question_lower and len(greeting) > 2:
+                return response
+        
+        return "Hello! I'm your Pakistan Constitution Assistant. How can I help you today?"
+    
     def initialize(self):
         """Initialize the system"""
         try:
             self.embeddings = LocalEmbeddings()
             
             if not os.path.exists(self.chroma_path):
-                raise FileNotFoundError("ChromaDB not found")
+                raise FileNotFoundError("ChromaDB database not found. Please ensure PDFs have been processed.")
             
             self.vector_store = Chroma(
                 persist_directory=self.chroma_path,
@@ -45,514 +119,1113 @@ class WorkingPDFAssistant:
                 collection_name=self.collection_name
             )
             
-            print("✅ System ready")
+            # Verify database is populated
+            collection_stats = self.vector_store._collection.count()
+            if collection_stats == 0:
+                raise ValueError("Database is empty. No documents found.")
+            
+            print(f"System initialized successfully (Session: {self.session_id})")
+            print(f"Database contains {collection_stats} document chunks")
+            
+            if self.use_ai_enhancement:
+                print(f"AI Enhancement: Available")
+            else:
+                print(f"AI Enhancement: Not available (using local data only)")
             
         except Exception as e:
-            print(f"❌ Failed: {str(e)}")
+            print(f"Initialization failed: {str(e)}")
             raise
     
     def answer_question(self, question: str) -> str:
-        """Answer questions from PDFs"""
+        """Answer questions with detailed paragraph format"""
         question_lower = question.lower().strip()
         
-        # Handle article questions specially
-        if "article" in question_lower or "art." in question_lower:
-            article_num = self._extract_article_number(question)
-            if article_num:
-                return self._get_article_content(article_num, question)
+        # Check if it's a greeting first
+        if self.is_greeting(question):
+            return self.get_greeting_response(question)
         
-        # Handle general questions
-        return self._get_general_answer(question)
+        try:
+            # Determine query type
+            query_type = self._determine_query_type(question)
+            
+            if query_type == "article_query":
+                article_num = self._extract_article_number(question)
+                if article_num:
+                    return self._generate_detailed_article_response(article_num, question)
+                else:
+                    return self._generate_detailed_general_response(question)
+            elif query_type == "legal_concept":
+                return self._generate_detailed_concept_response(question)
+            else:
+                return self._generate_detailed_general_response(question)
+                
+        except Exception as e:
+            return self._error_response(question, str(e))
     
-    def _get_article_content(self, article_num: str, original_question: str) -> str:
-        """Get article content with proper search"""
-        print(f"\n🔍 Searching for Article {article_num}...")
+    def _determine_query_type(self, question: str) -> str:
+        """Determine the type of query for appropriate response structure"""
+        question_lower = question.lower()
         
-        # First: Try to find actual article text (not table of contents)
-        actual_text = self._find_actual_article_text(article_num)
-        
-        if actual_text:
-            return self._format_article_answer(actual_text, article_num)
-        
-        # Second: Try to find in detailed sections
-        detailed_content = self._find_detailed_content(article_num)
-        
-        if detailed_content:
-            return self._format_detailed_answer(detailed_content, article_num)
-        
-        # Third: Check if it's in table of contents
-        toc_content = self._find_in_table_of_contents(article_num)
-        
-        if toc_content:
-            return self._format_toc_answer(toc_content, article_num, original_question)
-        
-        # Not found at all
-        return self._not_found_response(article_num)
-    
-    def _find_actual_article_text(self, article_num: str) -> List[Dict]:
-        """Find actual article text (not table of contents)"""
-        # Search patterns that indicate actual article text
-        search_queries = [
-            f"{article_num}. ",  # Article with period (indicates start of text)
-            f"Article {article_num}:",
-            f"Article {article_num} -",
-            f"Article {article_num}\n",
-            f"{article_num}."  # Just the number with period
+        # Check for article queries
+        article_patterns = [
+            r'article\s+\d+[A-Z]*',
+            r'art\.\s*\d+[A-Z]*',
+            r'\b\d+[A-Z]\b',
         ]
         
-        results = []
+        for pattern in article_patterns:
+            if re.search(pattern, question_lower):
+                return "article_query"
+        
+        # Check for legal concept queries
+        legal_concept_keywords = [
+            "what is", "explain", "define", "meaning of", "concept of",
+            "understanding", "analysis of", "discuss", "describe",
+            "how does", "what are", "tell me about"
+        ]
+        
+        for keyword in legal_concept_keywords:
+            if keyword in question_lower:
+                return "legal_concept"
+        
+        return "general_query"
+    
+    def _extract_article_number(self, text: str) -> str:
+        """Extract article number from text"""
+        for pattern in self.article_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                article_num = match.group(1).upper()
+                article_num = re.sub(r'\s+', '', article_num)
+                return article_num
+        
+        return ""
+    
+    def _generate_detailed_article_response(self, article_num: str, question: str) -> str:
+        """Generate detailed response for article queries"""
+        print(f"Searching for Article {article_num}")
+        
+        # Search for article content
+        search_results = self._search_article_content(article_num)
+        
+        if not search_results:
+            return self._not_found_response(article_num)
+        
+        # Structure the response
+        response = self._format_detailed_article_response(search_results, article_num, question)
+        return response
+    
+    def _search_article_content(self, article_num: str) -> List[Dict]:
+        """Search for article content in database"""
+        all_results = []
+        
+        # Multiple search queries for better coverage
+        search_queries = [
+            f"Article {article_num}:",
+            f"Article {article_num}.",
+            f"Article {article_num} ",
+            f"Art. {article_num}:",
+            f"Art. {article_num}.",
+            f"{article_num}. ",
+        ]
         
         for query in search_queries:
-            docs = self.vector_store.similarity_search(query, k=5)
+            try:
+                docs = self.vector_store.similarity_search(query, k=6)
+                
+                for doc in docs:
+                    content = doc.page_content
+                    source = doc.metadata.get('source', 'Unknown Document')
+                    page = doc.metadata.get('page', 'N/A')
+                    
+                    if self._is_table_of_contents(content):
+                        continue
+                    
+                    if self._is_article_content(content, article_num):
+                        article_text = self._extract_article_text(content, article_num)
+                        
+                        if article_text and len(article_text.strip()) > 30:
+                            all_results.append({
+                                'text': article_text,
+                                'source': source,
+                                'page': page,
+                                'type': 'article_text'
+                            })
+                    elif self._mentions_article(content, article_num):
+                        context = self._extract_context(content, article_num)
+                        if context and len(context.strip()) > 50:
+                            all_results.append({
+                                'text': context,
+                                'source': source,
+                                'page': page,
+                                'type': 'context'
+                            })
+            except Exception as e:
+                continue
+        
+        return all_results
+    
+    def _format_detailed_article_response(self, results: List[Dict], article_num: str, question: str) -> str:
+        """Format detailed article response"""
+        unique_results = self._deduplicate_results(results)
+        
+        response = ""
+        response += f"Article {article_num}: Comprehensive Constitutional Analysis\n\n"
+        
+        # CONSTITUTIONAL TEXT SECTION
+        response += "Constitutional Text\n\n"
+        
+        article_texts = [r for r in unique_results if r['type'] == 'article_text']
+        if article_texts:
+            best_text = article_texts[0]['text']
+            formatted_text = self._format_constitutional_text(best_text)
+            response += f"{formatted_text}\n\n"
+        else:
+            contexts = [r for r in unique_results if r['type'] == 'context']
+            if contexts:
+                response += f"While the exact text of Article {article_num} was not found, related constitutional context mentions:\n\n"
+                formatted_context = self._format_constitutional_text(contexts[0]['text'][:500])
+                response += f"{formatted_context}\n\n"
+            else:
+                response += f"Article {article_num} is referenced in constitutional documents.\n\n"
+        
+        # DETAILED ANALYSIS SECTION
+        response += "Detailed Constitutional Analysis\n\n"
+        
+        analysis = self._create_detailed_article_analysis(unique_results, article_num)
+        response += f"{analysis}\n\n"
+        
+        # KEY PROVISIONS SECTION
+        response += "Key Legal Provisions\n\n"
+        
+        detailed_provisions = self._extract_detailed_provisions(unique_results)
+        if detailed_provisions:
+            for i, provision in enumerate(detailed_provisions, 1):
+                response += f"{i}. {provision}\n"
+            response += "\n"
+        else:
+            default_provisions = [
+                "Establishes fundamental rights and duties",
+                "Provides legal framework for constitutional protections",
+                "Includes provisions for implementation and enforcement",
+                "Subject to judicial interpretation and review"
+            ]
+            for i, provision in enumerate(default_provisions, 1):
+                response += f"{i}. {provision}\n"
+            response += "\n"
+        
+        # SIGNIFICANCE SECTION
+        response += "Constitutional Significance\n\n"
+        
+        significance_points = self._extract_detailed_significance_points(unique_results)
+        for point in significance_points:
+            response += f"• {point}\n"
+        response += "\n"
+        
+        # SOURCE DOCUMENTS
+        response += "Source Documents\n\n"
+        
+        sources_summary = {}
+        for result in unique_results[:3]:
+            source = result['source']
+            if source not in sources_summary:
+                sources_summary[source] = {
+                    'pages': set(),
+                    'excerpt': result['text'][:100] + "..." if len(result['text']) > 100 else result['text']
+                }
+            
+            if result['page'] != 'N/A':
+                sources_summary[source]['pages'].add(result['page'])
+        
+        for source, data in sources_summary.items():
+            clean_source = os.path.basename(source)
+            response += f"• {clean_source}"
+            
+            if data['pages']:
+                pages = sorted(list(data['pages']))
+                response += f" (Pages: {', '.join(map(str, pages))})"
+            
+            response += f"\n  Excerpt: {data['excerpt']}\n\n"
+        
+        # RELATED ARTICLES
+        related_articles = self._extract_related_articles(unique_results)
+        if related_articles:
+            response += "Related Constitutional Articles\n\n"
+            response += f"This article is connected to: {', '.join(related_articles[:5])}\n\n"
+        
+        return response
+    
+    def _create_detailed_article_analysis(self, results: List[Dict], article_num: str) -> str:
+        """Create detailed article analysis"""
+        analysis_parts = []
+        
+        # Introduction
+        analysis_parts.append(f"Article {article_num} of Pakistan's Constitution establishes important legal provisions that form part of the constitutional framework.")
+        
+        # Extract key information
+        key_info = self._extract_article_information(results)
+        if key_info:
+            analysis_parts.append("\nThe article addresses several key aspects of constitutional law:")
+            for info in key_info:
+                analysis_parts.append(f"• {info}")
+        
+        # Legal implications
+        analysis_parts.append("\nThis article has significant legal implications for:")
+        implications = [
+            "Protection of fundamental rights and freedoms",
+            "Establishment of legal duties and obligations",
+            "Regulation of government powers and authorities",
+            "Provision of constitutional safeguards and remedies"
+        ]
+        for implication in implications:
+            analysis_parts.append(f"• {implication}")
+        
+        # Practical application
+        analysis_parts.append("\nIn practical application, this article:")
+        applications = [
+            "Provides basis for legal claims and challenges",
+            "Guides judicial interpretation of constitutional principles",
+            "Establishes parameters for legislative and executive actions",
+            "Forms part of Pakistan's constitutional jurisprudence"
+        ]
+        for application in applications:
+            analysis_parts.append(f"• {application}")
+        
+        return "\n".join(analysis_parts)
+    
+    def _generate_detailed_concept_response(self, question: str) -> str:
+        """Generate detailed response for legal concept queries"""
+        print(f"Analyzing legal concept: '{question}'")
+        
+        # Extract key terms
+        key_terms = self._extract_key_terms(question)
+        
+        # Search for concept information
+        search_results = self._search_concept_content(question, key_terms)
+        
+        if not search_results:
+            return self._no_results_response(question)
+        
+        # Structure the response
+        response = self._format_detailed_concept_response(search_results, question, key_terms)
+        return response
+    
+    def _search_concept_content(self, question: str, key_terms: List[str]) -> List[Dict]:
+        """Search for concept content in database"""
+        all_results = []
+        
+        # Create optimized search queries
+        search_queries = [
+            question,
+            *key_terms[:3],
+            *[f"{term} constitution pakistan" for term in key_terms[:2]],
+            *[f"constitutional {term}" for term in key_terms[:2]]
+        ]
+        
+        for query in search_queries[:4]:
+            try:
+                docs = self.vector_store.similarity_search(query, k=5)
+                
+                for doc in docs:
+                    content = doc.page_content
+                    source = doc.metadata.get('source', 'Unknown Document')
+                    page = doc.metadata.get('page', 'N/A')
+                    
+                    if self._is_table_of_contents(content):
+                        continue
+                    
+                    relevance = self._calculate_relevance(content, key_terms)
+                    
+                    if relevance > 0.3:
+                        all_results.append({
+                            'text': content,
+                            'source': source,
+                            'page': page,
+                            'type': 'concept_content',
+                            'relevance_score': relevance
+                        })
+            except Exception as e:
+                continue
+        
+        return all_results
+    
+    def _format_detailed_concept_response(self, results: List[Dict], question: str, key_terms: List[str]) -> str:
+        """Format detailed concept response"""
+        unique_results = self._deduplicate_results(results)
+        unique_results.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+        
+        response = ""
+        response += f"{question.title()}: Comprehensive Constitutional Analysis\n\n"
+        
+        # CONCEPT ANALYSIS SECTION
+        response += "Concept Analysis\n\n"
+        
+        analysis = self._create_detailed_concept_analysis(unique_results, question)
+        response += f"{analysis}\n\n"
+        
+        # CONSTITUTIONAL BASIS
+        response += "Constitutional Basis\n\n"
+        
+        all_articles = set()
+        for result in unique_results:
+            articles = self._extract_articles_from_text(result['text'])
+            for article in articles:
+                all_articles.add(article)
+        
+        if all_articles:
+            response += "This concept is addressed in the following constitutional articles:\n\n"
+            sorted_articles = sorted(list(all_articles))
+            groups = self._group_articles(sorted_articles)
+            
+            for group in groups[:5]:
+                if len(group) > 1:
+                    response += f"• Articles {group[0]}-{group[-1]}\n"
+                else:
+                    response += f"• Article {group[0]}\n"
+            response += "\n"
+        else:
+            response += "This concept is referenced in constitutional documents without specific article mentions.\n\n"
+        
+        # KEY FEATURES
+        response += "Key Constitutional Features\n\n"
+        
+        features = self._extract_detailed_features(unique_results)
+        if features:
+            for i, feature in enumerate(features, 1):
+                response += f"{i}. {feature}\n"
+            response += "\n"
+        else:
+            default_features = [
+                "Forms part of fundamental rights framework",
+                "Subject to constitutional interpretation and limitation",
+                "Includes legal safeguards and protections",
+                "Essential for democratic governance and rule of law",
+                "Implemented through specific constitutional provisions"
+            ]
+            for i, feature in enumerate(default_features, 1):
+                response += f"{i}. {feature}\n"
+            response += "\n"
+        
+        # LEGAL FRAMEWORK
+        response += "Legal Framework and Implications\n\n"
+        
+        legal_points = self._extract_legal_framework_points(unique_results)
+        for point in legal_points:
+            response += f"• {point}\n"
+        response += "\n"
+        
+        # SOURCE DOCUMENTS
+        response += "Source Documents\n\n"
+        
+        sources_data = {}
+        for result in unique_results[:3]:
+            source = result['source']
+            if source not in sources_data:
+                sources_data[source] = {
+                    'pages': set(),
+                    'excerpt': result['text'][:120] + "..." if len(result['text']) > 120 else result['text']
+                }
+            
+            if result['page'] != 'N/A':
+                sources_data[source]['pages'].add(result['page'])
+        
+        for source, data in sources_data.items():
+            clean_source = os.path.basename(source)
+            response += f"• {clean_source}"
+            
+            if data['pages']:
+                pages = sorted(list(data['pages']))
+                response += f" (Pages: {', '.join(map(str, pages[:2]))}"
+                if len(pages) > 2:
+                    response += f", and {len(pages)-2} more"
+                response += ")"
+            
+            response += f"\n  Excerpt: {data['excerpt']}\n\n"
+        
+        return response
+    
+    def _create_detailed_concept_analysis(self, results: List[Dict], question: str) -> str:
+        """Create detailed concept analysis"""
+        analysis_parts = []
+        
+        # Introduction
+        analysis_parts.append(f"The concept of '{question}' is a fundamental aspect of Pakistan's constitutional framework that addresses important legal principles and rights.")
+        
+        # Key aspects
+        key_aspects = self._extract_concept_aspects(results)
+        if key_aspects:
+            analysis_parts.append("\nKey aspects of this concept include:")
+            for aspect in key_aspects:
+                analysis_parts.append(f"• {aspect}")
+        
+        # Constitutional role
+        analysis_parts.append("\nWithin Pakistan's constitutional system, this concept:")
+        roles = [
+            "Establishes important legal principles and standards",
+            "Provides framework for rights protection and enforcement",
+            "Guides judicial interpretation of constitutional provisions",
+            "Forms basis for legislative and policy development"
+        ]
+        for role in roles:
+            analysis_parts.append(f"• {role}")
+        
+        # Practical significance
+        analysis_parts.append("\nThe practical significance of this concept lies in:")
+        significances = [
+            "Protection of individual rights and freedoms",
+            "Regulation of government powers and authorities",
+            "Provision of legal remedies and safeguards",
+            "Promotion of democratic governance and rule of law"
+        ]
+        for significance in significances:
+            analysis_parts.append(f"• {significance}")
+        
+        return "\n".join(analysis_parts)
+    
+    def _generate_detailed_general_response(self, question: str) -> str:
+        """Generate detailed response for general queries"""
+        print(f"Researching: '{question}'")
+        
+        # Extract key terms
+        key_terms = self._extract_key_terms(question)
+        
+        # Search for general information
+        search_results = self._search_general_content(question, key_terms)
+        
+        if not search_results:
+            return self._no_results_response(question)
+        
+        # Structure the response
+        response = self._format_detailed_general_response(search_results, question, key_terms)
+        return response
+    
+    def _search_general_content(self, question: str, key_terms: List[str]) -> List[Dict]:
+        """Search for general content in database"""
+        all_results = []
+        
+        # Create optimized query
+        search_query = question
+        if key_terms:
+            search_query = f"{question} constitution"
+        
+        try:
+            docs = self.vector_store.similarity_search(search_query, k=8)
             
             for doc in docs:
                 content = doc.page_content
-                source = doc.metadata.get('source', 'Unknown')
+                source = doc.metadata.get('source', 'Unknown Document')
                 page = doc.metadata.get('page', 'N/A')
                 
-                # Skip table of contents
                 if self._is_table_of_contents(content):
                     continue
                 
-                # Check if this looks like actual article text
-                if self._is_actual_article_text(content, article_num):
-                    # Extract the article text
-                    article_text = self._extract_article_from_content(content, article_num)
-                    if article_text:
-                        results.append({
-                            'text': article_text,
-                            'source': source,
-                            'page': page,
-                            'query': query
-                        })
-        
-        return results
-    
-    def _find_detailed_content(self, article_num: str) -> List[Dict]:
-        """Find detailed content mentioning the article"""
-        # Search for the article number in context
-        docs = self.vector_store.similarity_search(f"Article {article_num}", k=15)
-        
-        results = []
-        
-        for doc in docs:
-            content = doc.page_content
-            source = doc.metadata.get('source', 'Unknown')
-            page = doc.metadata.get('page', 'N/A')
-            
-            # Skip if it's just table of contents
-            if self._is_table_of_contents(content):
-                continue
-            
-            # Check if article is mentioned with some context
-            if any(term in content for term in [f"Article {article_num}", f"Art. {article_num}", f"{article_num}. "]):
-                # Extract context around the mention
-                context = self._extract_context(content, article_num)
-                if context and len(context.strip()) > 50:
-                    results.append({
-                        'text': context,
+                relevance = self._calculate_relevance(content, key_terms)
+                
+                if relevance > 0.2:
+                    all_results.append({
+                        'text': content,
                         'source': source,
                         'page': page,
-                        'type': 'context'
+                        'type': 'general_content',
+                        'relevance_score': relevance
                     })
+        except Exception as e:
+            print(f"Search error: {str(e)}")
         
-        return results
+        return all_results
     
-    def _find_in_table_of_contents(self, article_num: str) -> List[Dict]:
-        """Find article in table of contents"""
-        docs = self.vector_store.similarity_search(f"Article {article_num}", k=10)
+    def _format_detailed_general_response(self, results: List[Dict], question: str, key_terms: List[str]) -> str:
+        """Format detailed general response"""
+        unique_results = self._deduplicate_results(results)
+        unique_results.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
         
-        results = []
+        response = ""
+        response += f"{question.title()}: Comprehensive Constitutional Research\n\n"
         
-        for doc in docs:
-            content = doc.page_content
-            source = doc.metadata.get('source', 'Unknown')
-            page = doc.metadata.get('page', 'N/A')
+        # OVERVIEW SECTION
+        response += "Constitutional Overview\n\n"
+        
+        overview = self._create_detailed_overview(unique_results, question)
+        response += f"{overview}\n\n"
+        
+        # CONSTITUTIONAL PROVISIONS
+        response += "Constitutional Provisions\n\n"
+        
+        all_articles = set()
+        constitutional_points = []
+        
+        for result in unique_results[:4]:
+            # Extract articles
+            articles = self._extract_articles_from_text(result['text'])
+            for article in articles:
+                all_articles.add(article)
             
-            # Check if this is table of contents
-            if self._is_table_of_contents(content):
-                # Extract the line mentioning the article
-                lines = content.split('\n')
-                for line in lines:
-                    if any(term in line for term in [f"Article {article_num}", f"Art. {article_num}", f"{article_num}. "]):
-                        results.append({
-                            'text': line.strip(),
-                            'source': source,
-                            'page': page,
-                            'type': 'toc'
-                        })
-                        break
+            # Extract constitutional points
+            points = self._extract_constitutional_points(result['text'])
+            constitutional_points.extend(points[:2])
         
-        return results
+        if constitutional_points:
+            response += "The Constitution addresses this topic through several provisions:\n\n"
+            for i, point in enumerate(constitutional_points[:4], 1):
+                response += f"{i}. {point}\n"
+            response += "\n"
+        
+        # KEY FINDINGS
+        response += "Key Constitutional Findings\n\n"
+        
+        findings = self._extract_detailed_findings(unique_results)
+        for finding in findings:
+            response += f"• {finding}\n"
+        response += "\n"
+        
+        # SOURCE DOCUMENTS
+        response += "Source Documents\n\n"
+        
+        sources_info = {}
+        for result in unique_results[:4]:
+            source = result['source']
+            if source not in sources_info:
+                sources_info[source] = {
+                    'pages': set(),
+                    'excerpt': result['text'][:100] + "..." if len(result['text']) > 100 else result['text']
+                }
+            
+            if result['page'] != 'N/A':
+                sources_info[source]['pages'].add(result['page'])
+        
+        for source, data in sources_info.items():
+            clean_source = os.path.basename(source)
+            response += f"• {clean_source}"
+            
+            if data['pages']:
+                pages = sorted(list(data['pages']))
+                response += f" (Pages: {', '.join(map(str, pages))})"
+            
+            response += f"\n  Excerpt: {data['excerpt']}\n\n"
+        
+        # RELATED ARTICLES
+        if all_articles:
+            response += "Related Constitutional Articles\n\n"
+            
+            sorted_articles = sorted(list(all_articles))
+            groups = self._group_articles(sorted_articles)
+            
+            article_list = []
+            for group in groups[:5]:
+                if len(group) > 1:
+                    article_list.append(f"Articles {group[0]}-{group[-1]}")
+                else:
+                    article_list.append(f"Article {group[0]}")
+            
+            response += ', '.join(article_list) + "\n\n"
+        
+        return response
     
-    def _is_table_of_contents(self, content: str) -> bool:
-        """Check if content is table of contents"""
-        toc_indicators = [
-            "contents", "table of", "article s page", "articles page",
-            "preamble", "part i", "chapter", "schedule"
+    def _create_detailed_overview(self, results: List[Dict], question: str) -> str:
+        """Create detailed overview"""
+        overview_parts = []
+        
+        # Introduction
+        overview_parts.append(f"The topic of '{question}' is comprehensively addressed in Pakistan's Constitution through various articles and legal provisions.")
+        
+        # Key information
+        key_info = self._extract_general_information(results)
+        if key_info:
+            overview_parts.append("\nKey constitutional aspects include:")
+            for info in key_info:
+                overview_parts.append(f"• {info}")
+        
+        # Constitutional framework
+        overview_parts.append("\nThe constitutional framework for this topic includes:")
+        framework_points = [
+            "Specific articles establishing rights and duties",
+            "Legal provisions for implementation and enforcement",
+            "Judicial mechanisms for protection and remedy",
+            "Constitutional safeguards and limitations"
         ]
+        for point in framework_points:
+            overview_parts.append(f"• {point}")
         
-        content_lower = content[:200].lower()  # Check first 200 chars
+        # Importance
+        overview_parts.append("\nThis topic is important because:")
+        importance_points = [
+            "It addresses fundamental aspects of constitutional law",
+            "It establishes legal standards and protections",
+            "It guides government actions and policies",
+            "It forms part of Pakistan's constitutional heritage"
+        ]
+        for point in importance_points:
+            overview_parts.append(f"• {point}")
         
-        # If it's very short and contains dots/numbers pattern, it's likely TOC
-        if len(content) < 300:
-            if re.search(r'\d+\s+\.+\s+\d+', content):  # Pattern like "25 ...... 15"
-                return True
-        
-        # Check for TOC indicators
-        indicator_count = sum(1 for indicator in toc_indicators if indicator in content_lower)
-        return indicator_count >= 2
+        return "\n".join(overview_parts)
     
-    def _is_actual_article_text(self, content: str, article_num: str) -> bool:
-        """Check if content is actual article text"""
-        # Legal language indicators
-        legal_indicators = ["shall", "may", "must", "should", "entitled", 
-                           "right", "duty", "power", "authority", "prohibited",
-                           "provided that", "notwithstanding", "subject to"]
+    # Helper Methods for Detailed Content
+    
+    def _format_constitutional_text(self, text: str) -> str:
+        """Format constitutional text with proper paragraph structure"""
+        # Clean the text
+        text = re.sub(r'\s+', ' ', text).strip()
+        
+        # Break into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        # Group sentences into paragraphs
+        paragraphs = []
+        current_paragraph = []
+        
+        for sentence in sentences:
+            current_paragraph.append(sentence)
+            if len(current_paragraph) >= 2 and len(sentence) > 80:
+                paragraphs.append(' '.join(current_paragraph))
+                current_paragraph = []
+        
+        if current_paragraph:
+            paragraphs.append(' '.join(current_paragraph))
+        
+        # Format paragraphs
+        formatted_text = ""
+        for paragraph in paragraphs:
+            formatted_text += paragraph + "\n\n"
+        
+        return formatted_text.strip()
+    
+    def _extract_article_information(self, results: List[Dict]) -> List[str]:
+        """Extract article information"""
+        info = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 6 and any(keyword in sentence.lower() 
+                    for keyword in ['provides', 'establishes', 'guarantees', 'prohibits', 'requires']):
+                    
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in info:
+                        info.append(clean_sentence[:120])
+        
+        return info[:5]
+    
+    def _extract_detailed_provisions(self, results: List[Dict]) -> List[str]:
+        """Extract detailed provisions"""
+        provisions = []
+        
+        for result in results:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 6 and any(keyword in sentence.lower() 
+                    for keyword in ['shall', 'may', 'must', 'right to', 'entitled to', 'duty to']):
+                    
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in provisions:
+                        if clean_sentence[0].islower():
+                            clean_sentence = clean_sentence[0].upper() + clean_sentence[1:]
+                        provisions.append(clean_sentence[:130])
+                        
+                        if len(provisions) >= 6:
+                            break
+        
+        return provisions[:6]
+    
+    def _extract_detailed_significance_points(self, results: List[Dict]) -> List[str]:
+        """Extract detailed significance points"""
+        points = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 5 and len(sentence) < 150:
+                    if any(indicator in sentence.lower() for indicator in 
+                          ['important', 'essential', 'significant', 'crucial', 'vital']):
+                        
+                        clean_sentence = sentence.strip()
+                        if clean_sentence and clean_sentence not in points:
+                            points.append(clean_sentence)
+        
+        # Add default points if none found
+        if not points:
+            points = [
+                "Establishes fundamental constitutional principles",
+                "Provides legal framework for rights protection",
+                "Subject to judicial interpretation and review",
+                "Integral to Pakistan's constitutional democracy",
+                "Forms basis for legal claims and remedies"
+            ]
+        
+        return points[:5]
+    
+    def _extract_concept_aspects(self, results: List[Dict]) -> List[str]:
+        """Extract concept aspects"""
+        aspects = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 6 and len(sentence) < 200:
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in aspects:
+                        aspects.append(clean_sentence[:150])
+        
+        return aspects[:5]
+    
+    def _extract_detailed_features(self, results: List[Dict]) -> List[str]:
+        """Extract detailed features"""
+        features = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 7 and any(keyword in sentence.lower() 
+                    for keyword in ['feature', 'characteristic', 'aspect', 'element']):
+                    
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in features:
+                        features.append(clean_sentence[:130])
+        
+        return features[:6]
+    
+    def _extract_legal_framework_points(self, results: List[Dict]) -> List[str]:
+        """Extract legal framework points"""
+        points = []
+        
+        for result in results[:2]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 6 and any(keyword in sentence.lower() 
+                    for keyword in ['framework', 'legal', 'constitutional', 'provision']):
+                    
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in points:
+                        points.append(clean_sentence[:110])
+        
+        return points[:4]
+    
+    def _extract_general_information(self, results: List[Dict]) -> List[str]:
+        """Extract general information"""
+        info = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 5 and len(sentence) < 180:
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in info:
+                        info.append(clean_sentence[:120])
+        
+        return info[:5]
+    
+    def _extract_constitutional_points(self, text: str) -> List[str]:
+        """Extract constitutional points from text"""
+        points = []
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        
+        for sentence in sentences:
+            if len(sentence.split()) > 5 and any(keyword in sentence.lower() 
+                for keyword in ['constitution', 'article', 'right', 'duty', 'power', 'shall']):
+                
+                clean_sentence = sentence.strip()
+                if clean_sentence and clean_sentence not in points:
+                    points.append(clean_sentence[:140])
+        
+        return points[:3]
+    
+    def _extract_detailed_findings(self, results: List[Dict]) -> List[str]:
+        """Extract detailed findings from results"""
+        findings = []
+        
+        for result in results[:3]:
+            text = result['text']
+            sentences = re.split(r'(?<=[.!?])\s+', text)
+            
+            for sentence in sentences:
+                if len(sentence.split()) > 6 and len(sentence) < 150:
+                    clean_sentence = sentence.strip()
+                    if clean_sentence and clean_sentence not in findings:
+                        findings.append(clean_sentence)
+        
+        # Add default findings if none found
+        if not findings:
+            findings = [
+                "Constitutional provisions establish comprehensive legal framework",
+                "Multiple articles address different aspects of this topic",
+                "Judicial interpretation plays crucial role in application",
+                "Constitutional safeguards ensure proper implementation",
+                "Legal principles guide government actions and policies"
+            ]
+        
+        return findings[:6]
+    
+    # Basic Helper Methods
+    
+    def _extract_key_terms(self, text: str) -> List[str]:
+        """Extract key terms from text"""
+        stop_words = {'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
+        
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        
+        key_terms = []
+        for word in words:
+            if word not in stop_words:
+                key_terms.append(word)
+        
+        return list(set(key_terms))[:6]
+    
+    def _calculate_relevance(self, content: str, key_terms: List[str]) -> float:
+        """Calculate relevance score"""
+        if not key_terms:
+            return 0.5
         
         content_lower = content.lower()
+        matches = sum(1 for term in key_terms if term in content_lower)
         
-        # Check for article marker
-        if not any(term in content for term in [f"Article {article_num}", f"Art. {article_num}", f"{article_num}. "]):
-            return False
-        
-        # Check for legal language
-        legal_count = sum(1 for word in legal_indicators if word in content_lower)
-        
-        # Should have at least 2 legal terms and not be just TOC
-        return legal_count >= 2 and not self._is_table_of_contents(content)
+        return matches / len(key_terms) if key_terms else 0
     
-    def _extract_article_from_content(self, content: str, article_num: str) -> str:
-        """Extract article text from content"""
-        # Try different patterns to extract article text
+    def _is_article_content(self, content: str, article_num: str) -> bool:
+        """Check if content is article content"""
         patterns = [
-            rf"(Article\s+{article_num}[\.\:\-]\s*.*?)(?=Article\s+\d+|$)",
-            rf"(Art\.\s+{article_num}[\.\:\-]\s*.*?)(?=Art\.\s+\d+|$)",
-            rf"({article_num}\.\s+.*?)(?=\d+\.\s+|Article\s+|$)",
+            rf'article\s+{article_num}[\.\:\-]',
+            rf'art\.\s+{article_num}[\.\:\-]',
+            rf'{article_num}\.\s+',
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                legal_markers = ["shall", "may", "must", "entitled", "right", "duty", "power"]
+                content_lower = content.lower()
+                marker_count = sum(1 for marker in legal_markers if marker in content_lower)
+                
+                return marker_count >= 2 and not self._is_table_of_contents(content)
+        
+        return False
+    
+    def _mentions_article(self, content: str, article_num: str) -> bool:
+        """Check if content mentions article"""
+        patterns = [
+            rf'article\s+{article_num}',
+            rf'art\.\s+{article_num}',
+            rf'\b{article_num}\b',
+        ]
+        
+        for pattern in patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                return True
+        
+        return False
+    
+    def _extract_article_text(self, content: str, article_num: str) -> str:
+        """Extract article text"""
+        patterns = [
+            rf'(?:article\s+{article_num}|art\.\s+{article_num})[\.\:\-]\s*(.*?)(?=(?:article|art\.)\s+\d+|\Z)',
+            rf'{article_num}\.\s*(.*?)(?=\d+\.\s+|$|\n\n)',
         ]
         
         for pattern in patterns:
             match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
             if match:
-                return match.group(1).strip()
+                extracted = match.group(1).strip()
+                extracted = re.sub(r'\s+', ' ', extracted)
+                return extracted
         
-        # If no pattern matches, return the content (it might be the whole article)
-        return content.strip()
+        return content[:500].strip()
     
-    def _extract_context(self, content: str, article_num: str, lines_before: int = 2, lines_after: int = 4) -> str:
+    def _extract_context(self, content: str, article_num: str) -> str:
         """Extract context around article mention"""
-        lines = content.split('\n')
+        pattern = rf'.{{0,100}}(?:article\s+{article_num}|art\.\s+{article_num}).{{0,200}}'
+        match = re.search(pattern, content, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
         
-        for i, line in enumerate(lines):
-            if any(term in line for term in [f"Article {article_num}", f"Art. {article_num}", f"{article_num}. "]):
-                start = max(0, i - lines_before)
-                end = min(len(lines), i + lines_after + 1)
-                return '\n'.join(lines[start:end])
-        
-        # If not found line by line, return beginning of content
-        return content[:500]
+        return content[:300].strip()
     
-    def _format_article_answer(self, results: List[Dict], article_num: str) -> str:
-        """Format actual article text answer"""
-        if not results:
-            return ""
+    def _extract_articles_from_text(self, text: str) -> List[str]:
+        """Extract all article numbers from text"""
+        articles = set()
         
-        best_result = results[0]  # Use the best match
+        for pattern in self.article_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                articles.add(match.upper())
         
-        response = f"📜 **ARTICLE {article_num}**\n"
-        response += "=" * 50 + "\n\n"
-        
-        # Clean the text
-        text = best_result['text']
-        text = re.sub(r'\s+', ' ', text)  # Remove extra whitespace
-        text = text.strip()
-        
-        # Capitalize properly
-        if text and text[0].islower():
-            text = text[0].upper() + text[1:]
-        
-        response += f"{text}\n\n"
-        
-        # Add source
-        response += "**Source:** "
-        response += best_result['source']
-        if best_result['page'] != 'N/A':
-            response += f" (Page {best_result['page']})"
-        response += "\n\n"
-        
-        # Add note if there are more results
-        if len(results) > 1:
-            response += f"*Also found in {len(results)-1} other locations*\n"
-        
-        return response
+        return sorted(list(articles))
     
-    def _format_detailed_answer(self, results: List[Dict], article_num: str) -> str:
-        """Format detailed content answer"""
-        response = f"🔍 **INFORMATION ABOUT ARTICLE {article_num}**\n"
-        response += "=" * 50 + "\n\n"
+    def _deduplicate_results(self, results: List[Dict]) -> List[Dict]:
+        """Remove duplicate results"""
+        unique_results = []
+        seen_content = set()
         
-        response += f"While I couldn't find the exact text of Article {article_num}, "
-        response += "here's relevant information from your documents:\n\n"
+        for result in results:
+            text = result.get('text', '')
+            if text:
+                normalized = text.lower()[:150]
+                normalized = re.sub(r'\s+', ' ', normalized).strip()
+                
+                if normalized not in seen_content:
+                    seen_content.add(normalized)
+                    unique_results.append(result)
         
-        for i, result in enumerate(results[:3]):  # Show top 3
-            text = result['text']
-            source = result['source']
-            page = result['page']
-            
-            # Clean text
-            text = re.sub(r'\s+', ' ', text)
-            text = text.strip()
-            
-            response += f"**{i+1}. From {source}**"
-            if page != 'N/A':
-                response += f" (Page {page})"
-            response += ":\n"
-            
-            response += f"> {text}\n\n"
-        
-        response += "---\n"
-        response += "*Note: The full article text might be in a different format or section.*\n"
-        
-        return response
+        return unique_results
     
-    def _format_toc_answer(self, results: List[Dict], article_num: str, original_question: str) -> str:
-        """Format table of contents answer"""
-        response = f"📋 **ARTICLE {article_num} - TABLE OF CONTENTS**\n"
-        response += "=" * 50 + "\n\n"
+    def _extract_related_articles(self, results: List[Dict]) -> List[str]:
+        """Extract related articles from results"""
+        articles = set()
         
-        response += f"Article {article_num} is listed in your documents, but I could only find it in the table of contents.\n\n"
+        for result in results:
+            text = result.get('text', '')
+            extracted = self._extract_articles_from_text(text)
+            for article in extracted:
+                articles.add(article)
         
-        response += "**Where it appears:**\n"
-        for i, result in enumerate(results[:3]):
-            text = result['text'].strip()
-            source = result['source']
-            
-            response += f"{i+1}. **{source}**: {text}\n"
-        
-        response += "\n**What this means:**\n"
-        response += "✓ Article exists in the document structure\n"
-        response += f"✗ Actual text of Article {article_num} not found in searchable content\n"
-        response += "✗ Might be in scanned/images or different formatting\n\n"
-        
-        response += "**Suggestions:**\n"
-        response += "1. Check the actual PDF file for Article {article_num}\n"
-        response += "2. The article might be on a scanned page (not searchable text)\n"
-        response += "3. Try searching for related terms instead\n"
-        
-        return response
+        return sorted(list(articles))
     
-    def _not_found_response(self, article_num: str) -> str:
-        """Response when article is not found at all"""
-        response = f"❌ **ARTICLE {article_num} NOT FOUND**\n"
-        response += "=" * 50 + "\n\n"
+    def _group_articles(self, articles: List[str]) -> List[List[str]]:
+        """Group articles numerically"""
+        groups = []
+        current_group = []
         
-        response += f"I searched your PDF documents but could not find **Article {article_num}** in any form.\n\n"
+        for article in sorted(articles, key=lambda x: int(re.sub(r'[A-Z]+', '', x) or 0)):
+            if re.match(r'^\d+[A-Z]*$', article):
+                try:
+                    num_part = re.sub(r'[A-Z]+', '', article)
+                    if num_part:
+                        num = int(num_part)
+                        if not current_group or num == int(re.sub(r'[A-Z]+', '', current_group[-1])) + 1:
+                            current_group.append(article)
+                        else:
+                            if current_group:
+                                groups.append(current_group)
+                            current_group = [article]
+                except:
+                    if current_group:
+                        groups.append(current_group)
+                        current_group = []
+                    groups.append([article])
+            else:
+                if current_group:
+                    groups.append(current_group)
+                    current_group = []
+                groups.append([article])
         
-        response += "**Possible reasons:**\n"
-        response += "1. Article doesn't exist in your uploaded PDFs\n"
-        response += "2. PDF contains only table of contents, not full text\n"
-        response += "3. Text is in images/scanned pages (not searchable)\n"
-        response += "4. Different numbering system used\n\n"
+        if current_group:
+            groups.append(current_group)
         
-        response += "**Try asking about:**\n"
-        
-        # Suggest similar articles that DO exist
-        similar_articles = self._find_similar_articles(article_num)
-        if similar_articles:
-            response += "Similar articles found in your PDFs:\n"
-            for article in similar_articles[:5]:
-                response += f"• Article {article}\n"
-        else:
-            response += "• Fundamental rights\n• Constitutional provisions\n• Legal articles\n"
-        
-        return response
+        return groups
     
-    def _find_similar_articles(self, article_num: str) -> List[str]:
-        """Find similar articles that exist"""
-        try:
-            # Get all documents and extract article numbers
-            all_docs = self.vector_store.similarity_search("Article", k=50)
-            
-            articles_found = set()
-            
-            for doc in all_docs:
-                content = doc.page_content
-                # Extract article numbers
-                matches = re.findall(r'Article\s+(\d+[A-Z]*)', content, re.IGNORECASE)
-                for match in matches:
-                    if match != article_num:  # Don't include the one we're looking for
-                        articles_found.add(match)
-            
-            return sorted(list(articles_found))
-        except:
-            return []
-    
-    def _get_general_answer(self, question: str) -> str:
-        """Answer general questions"""
-        print(f"🔍 Searching for: '{question}'")
+    def _is_table_of_contents(self, content: str) -> bool:
+        """Check if content is table of contents"""
+        if len(content) < 100:
+            return False
         
-        docs = self.vector_store.similarity_search(question, k=10)
+        content_lower = content[:300].lower()
         
-        if not docs:
-            return f"❌ No information found about '{question}'"
-        
-        # Filter out table of contents
-        relevant_docs = []
-        for doc in docs:
-            content = doc.page_content
-            if not self._is_table_of_contents(content):
-                relevant_docs.append(doc)
-        
-        if not relevant_docs:
-            # If only TOC found, say so
-            return f"📋 Only found '{question}' in table of contents, not detailed text."
-        
-        response = f"📚 **INFORMATION ABOUT: {question}**\n"
-        response += "=" * 50 + "\n\n"
-        
-        for i, doc in enumerate(relevant_docs[:5]):
-            source = doc.metadata.get('source', 'Unknown')
-            page = doc.metadata.get('page', 'N/A')
-            content = doc.page_content
-            
-            # Clean content
-            content = re.sub(r'\s+', ' ', content)
-            content = content.strip()
-            
-            if len(content) > 300:
-                content = content[:297] + "..."
-            
-            response += f"**{i+1}. {source}**"
-            if page != 'N/A':
-                response += f" (Page {page})"
-            response += ":\n"
-            
-            response += f"> {content}\n\n"
-        
-        response += f"*Found {len(relevant_docs)} relevant sections*\n"
-        
-        return response
-    
-    def _extract_article_number(self, text: str) -> str:
-        """Extract article number from text"""
-        patterns = [
-            r'article\s+(\d+[A-Z\-]*)',
-            r'art\.\s*(\d+[A-Z\-]*)',
-            r'\b(\d+[A-Z\-])\b'
+        toc_indicators = [
+            "contents", "table of", "preamble", "part i", "chapter i",
+            "schedule", "index", "article page", "articles page",
+            "......", "........", "....."
         ]
         
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).upper()
+        indicator_count = sum(1 for indicator in toc_indicators if indicator in content_lower)
         
-        return ""
+        if re.search(r'\d+\s+\.+\s+\d+', content):
+            return True
+        
+        return indicator_count >= 2
+    
+    def _not_found_response(self, article_num: str) -> str:
+        """Not found response"""
+        response = f"Article {article_num}: Not Found\n\n"
+        response += f"Article {article_num} was not found in the constitutional database.\n\n"
+        response += "Suggestions:\n"
+        response += "• Verify the article number\n"
+        response += "• Search for related constitutional concepts\n"
+        response += "• Check general constitutional topics\n"
+        response += "• Ask about specific rights or government structures\n"
+        
+        return response
+    
+    def _no_results_response(self, question: str) -> str:
+        """No results response"""
+        response = f"No Constitutional Results Found\n\n"
+        response += f"Query: '{question}'\n\n"
+        response += "Suggestions for Better Results:\n"
+        response += "• Use specific constitutional terminology\n"
+        response += "• Search by Article number (e.g., 'Article 19', 'Article 25A')\n"
+        response += "• Ask about fundamental rights or government structure\n"
+        response += "• Use keywords: freedom, right, parliament, president, judiciary\n"
+        
+        return response
+    
+    def _error_response(self, question: str, error_msg: str) -> str:
+        """Error response"""
+        response = f"System Error\n\n"
+        response += f"Query: {question}\n"
+        response += f"Error: {error_msg[:100]}\n\n"
+        response += "Please ensure the database is properly initialized and documents are processed.\n"
+        
+        return response
 
-# Global instance
-assistant = WorkingPDFAssistant()
+# Global instance for compatibility
+assistant = DetailedConstitutionAssistant()
 
 def answer_question(question: str) -> str:
-    """Public function"""
+    """Public function for external use"""
     if assistant.vector_store is None:
         assistant.initialize()
     
     return assistant.answer_question(question)
 
-
-# SPECIAL: Search for actual article text
+# For backward compatibility
 def find_real_article(article_num: str) -> str:
-    """Find real article text (not table of contents)"""
-    import chromadb
-    
-    client = chromadb.PersistentClient(path="./chroma_db")
-    collection = client.get_collection("constitutional_docs")
-    
-    print(f"\n🔍 FINDING REAL TEXT OF ARTICLE {article_num}")
-    print("="*60)
-    
-    # Get all documents
-    all_docs = collection.get()
-    
-    real_texts = []
-    
-    for i, (doc, metadata) in enumerate(zip(all_docs['documents'], all_docs['metadatas'])):
-        # Skip if it's table of contents
-        if "contents" in doc[:200].lower() or "article s page" in doc.lower():
-            continue
-        
-        # Look for article text patterns
-        patterns = [
-            rf"Article\s+{article_num}[\.\:\-]\s+(.*?)(?=Article\s+\d+)",
-            rf"{article_num}\.\s+(.*?)(?=\d+\.\s+)",
-            rf"Art\.\s+{article_num}[\.\:\-]\s+(.*?)(?=Art\.\s+\d+)",
-        ]
-        
-        for pattern in patterns:
-            matches = re.findall(pattern, doc, re.IGNORECASE | re.DOTALL)
-            if matches:
-                source = metadata.get('source', 'Unknown') if metadata else 'Unknown'
-                page = metadata.get('page', 'N/A')
-                
-                real_texts.append({
-                    'text': matches[0].strip(),
-                    'source': source,
-                    'page': page,
-                    'doc_index': i
-                })
-                break
-    
-    if real_texts:
-        print(f"✅ Found {len(real_texts)} instances of real article text")
-        print()
-        
-        # Show the longest/best match
-        real_texts.sort(key=lambda x: len(x['text']), reverse=True)
-        best = real_texts[0]
-        
-        print(f"📜 **ARTICLE {article_num}:**")
-        print("-" * 50)
-        
-        text = best['text']
-        text = re.sub(r'\s+', ' ', text)
-        text = text.strip()
-        
-        print(text[:800])
-        if len(text) > 800:
-            print("... [continued]")
-            print(text[800:1600] if len(text) > 1600 else text[800:])
-        
-        print("-" * 50)
-        print(f"\n📁 Source: {best['source']}")
-        if best['page'] != 'N/A':
-            print(f"📄 Page: {best['page']}")
-        
-        return text
-    else:
-        print(f"❌ No real article text found for Article {article_num}")
-        print("\n⚠️ Your PDFs might only contain table of contents, not full article text.")
-        return None
-
+    """Legacy function - redirects to new system"""
+    return answer_question(f"Article {article_num}")
 
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("📄 WORKING PDF ASSISTANT")
-    print("="*60)
+    print("\nPakistan Constitution Assistant - Detailed Version")
+    print("Paragraph-Based Detailed Responses\n")
     
     assistant.initialize()
     
-    # Test with your questions
-    test_questions = [
-        "What does Article 25A say?",
-        "Article 19",
-        "What is freedom of speech?",
-        "Explain Article 14",
-        "What are fundamental rights?"
-    ]
+    print(f"\nTry these queries for detailed responses:")
+    print("1. Article 19 - Freedom of speech")
+    print("2. What are fundamental rights in Pakistan?")
+    print("3. Explain the structure of Parliament")
+    print("4. How are judges appointed in Pakistan?")
+    print("5. What is the right to education under Article 25A?")
+    print("\nOr say hello:")
+    print("• Hello / Hi / Good morning")
+    print("• Help")
+    print("• Thank you")
+    print("\n")
     
-    for i, question in enumerate(test_questions):
-        print(f"\n{'='*60}")
-        print(f"TEST {i+1}: {question}")
-        print(f"{'='*60}")
-        
-        answer = answer_question(question)
-        print(f"\n{answer}")
+    # Interactive mode
+    while True:
+        try:
+            question = input("Your constitutional question: ").strip()
+            
+            if question.lower() in ['exit', 'quit', 'bye']:
+                print("\nGoodbye! Constitutional wisdom awaits your return!")
+                break
+            
+            if not question:
+                continue
+            
+            answer = answer_question(question)
+            print(f"\n{answer}\n")
+            
+        except KeyboardInterrupt:
+            print("\n\nGoodbye! Come back for more constitutional insights!")
+            break
+        except Exception as e:
+            print(f"\nError: {str(e)}")

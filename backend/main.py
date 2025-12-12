@@ -1,4 +1,4 @@
-# main.py - WORKING VERSION
+# main.py - UPDATED VERSION for /api/chat endpoint
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import logging
 import uvicorn
 import os
+import re
 
 # Import our RAG system
 from rag_chain import answer_question, assistant
@@ -39,22 +40,31 @@ class HealthResponse(BaseModel):
 class SystemInfo(BaseModel):
     status: str
     version: str = "1.0.0"
-    service: str = "PDF Document Assistant"
+    service: str = "Pakistan Constitution Assistant"
     endpoints: list
 
 # Initialize FastAPI
 app = FastAPI(
-    title="PDF Document Assistant API",
-    description="API for asking questions about your PDF documents",
+    title="Pakistan Constitution Assistant API",
+    description="API for asking questions about the Constitution of Pakistan",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_url="/api/openapi.json"  # ✅ Added for API prefix compatibility
 )
 
-# CORS middleware
+# CORS middleware - update with your frontend URLs
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
+    allow_origins=[
+        "http://localhost:3000",    # React default
+        "http://127.0.0.1:3000",
+        "http://localhost:5500",    # Python HTTP server
+        "http://127.0.0.1:5500",
+        "http://localhost:8080",    # Your backend port
+        "http://127.0.0.1:8080",
+        "http://localhost:8000",    # Alternative port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -68,7 +78,7 @@ async def startup_event():
     """Initialize RAG system on startup"""
     global rag_initialized
     try:
-        logger.info("🚀 Starting PDF Document Assistant...")
+        logger.info("🚀 Starting Pakistan Constitution Assistant...")
         
         # Check if ChromaDB exists
         if not os.path.exists("./chroma_db"):
@@ -91,22 +101,23 @@ async def startup_event():
         rag_initialized = False
         raise
 
-@app.get("/", response_model=SystemInfo)
-async def root():
-    """Root endpoint with system information"""
+# ✅ API PREFIX ROUTES
+@app.get("/api/", response_model=SystemInfo)
+async def api_root():
+    """Root endpoint with system information (with /api/ prefix)"""
     return SystemInfo(
         status="online" if rag_initialized else "initializing",
         endpoints=[
-            {"method": "GET", "path": "/", "description": "System information"},
-            {"method": "GET", "path": "/health", "description": "Health check"},
-            {"method": "POST", "path": "/chat", "description": "Ask questions about PDFs"},
-            {"method": "GET", "path": "/stats", "description": "Get PDF statistics"}
+            {"method": "GET", "path": "/api/", "description": "System information"},
+            {"method": "GET", "path": "/api/health", "description": "Health check"},
+            {"method": "POST", "path": "/api/chat", "description": "Ask questions about Constitution"},
+            {"method": "GET", "path": "/api/stats", "description": "Get PDF statistics"}
         ]
     )
 
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Health check endpoint"""
+@app.get("/api/health", response_model=HealthResponse)
+async def api_health_check():
+    """Health check endpoint (with /api/ prefix)"""
     try:
         if rag_initialized:
             # Try to get some stats
@@ -137,9 +148,9 @@ async def health_check():
             error=str(e)
         )
 
-@app.get("/stats")
-async def get_stats():
-    """Get PDF statistics"""
+@app.get("/api/stats")
+async def api_get_stats():
+    """Get PDF statistics (with /api/ prefix)"""
     try:
         if not rag_initialized:
             raise HTTPException(status_code=503, detail="System not initialized")
@@ -179,9 +190,9 @@ async def get_stats():
         logger.error(f"❌ Stats error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Main chat endpoint - ask questions about your PDFs"""
+@app.post("/api/chat", response_model=ChatResponse)
+async def api_chat(request: ChatRequest):
+    """Main chat endpoint - ask questions about Constitution (with /api/ prefix)"""
     import time
     
     start_time = time.time()
@@ -222,14 +233,14 @@ async def chat(request: ChatRequest):
             processing_time=processing_time
         )
 
-@app.post("/batch")
-async def batch_chat(requests: list[ChatRequest]):
-    """Batch processing endpoint for multiple questions"""
+@app.post("/api/batch")
+async def api_batch_chat(requests: list[ChatRequest]):
+    """Batch processing endpoint for multiple questions (with /api/ prefix)"""
     responses = []
     
     for request in requests:
         try:
-            response = await chat(request)
+            response = await api_chat(request)
             responses.append({
                 "question": request.question,
                 "answer": response.answer,
@@ -251,17 +262,37 @@ async def batch_chat(requests: list[ChatRequest]):
         "responses": responses
     }
 
-# Import regex for stats endpoint
-import re
+# ✅ KEEP OLD ENDPOINTS FOR BACKWARD COMPATIBILITY
+@app.get("/", response_model=SystemInfo)
+async def root():
+    """Legacy root endpoint"""
+    return await api_root()
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Legacy health endpoint"""
+    return await api_health_check()
+
+@app.get("/stats")
+async def get_stats():
+    """Legacy stats endpoint"""
+    return await api_get_stats()
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Legacy chat endpoint"""
+    return await api_chat(request)
 
 if __name__ == "__main__":
     # Get port from environment or use default
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8080))  # ✅ Changed to 8080 to match your frontend
     host = os.getenv("HOST", "0.0.0.0")
     
     logger.info(f"🌐 Starting server on {host}:{port}")
-    logger.info(f"📚 PDF Document Assistant API")
+    logger.info(f"📚 Pakistan Constitution Assistant API")
     logger.info(f"📄 Docs available at: http://{host}:{port}/docs")
+    logger.info(f"📡 API endpoints prefixed with: /api/")
+    logger.info(f"💬 Chat endpoint: POST http://{host}:{port}/api/chat")
     
     uvicorn.run(
         app,
@@ -270,3 +301,4 @@ if __name__ == "__main__":
         reload=True,  # Auto-reload during development
         log_level="info"
     )
+    
