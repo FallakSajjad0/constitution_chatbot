@@ -5,4 +5,7 @@ backend/data/__pycache__/
 backend/chroma_db/
 backend/data/
 __pycache__/
+another_pdfs/
+ingestion_logs/
+logs/
 

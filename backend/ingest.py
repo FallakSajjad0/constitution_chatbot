@@ -1,436 +1,453 @@
-# ingest.py - Opti
+# backend/ingest.py
 import os
-import logging
+import pickle
 import hashlib
-from typing import List, Dict, Tuple
-from dotenv import load_dotenv
+import warnings
+from pathlib import Path
 
-# PDF processing
-import PyPDF2
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 
-# ChromaDB
-try:
-    import chromadb
-    from chromadb.config import Settings
-    from langchain_chroma import Chroma
-except ImportError:
-    from langchain_community.vectorstores import Chroma
+# Import constants
+from constants import (
+    DATA_DIR,
+    CHROMA_DIR,
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+    COLLECTION_NAME,
+    EMBEDDINGS_MODEL,
+    PDF_EXTENSIONS,
+    METADATA_ARTICLE,
+    METADATA_PAGE,
+    METADATA_SOURCE,
+    METADATA_CHUNK_ID,
+    METADATA_PDF_HASH,
+    METADATA_CHUNK_INDEX,
+    METADATA_TOTAL_CHUNKS,
+    SEEN_PDFS_FILE,
+    INGESTION_LOG_FILE,
+    BATCH_SIZE,
+    MAX_PDF_SIZE_MB
+)
 
-# Local embeddings
-from embeddings_local import LocalEmbeddings
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
-load_dotenv()
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
-class ConstitutionalPDFIngestor:
-    def __init__(self):
-        self.data_path = "./data"
-        self.chroma_path = "./chroma_db"
-        self.collection_name = "constitutional_docs"
-        self.embeddings = LocalEmbeddings()
-        
-        # Create directories if they don't exist
-        os.makedirs(self.data_path, exist_ok=True)
-        os.makedirs(self.chroma_path, exist_ok=True)
-        
-    def extract_text_from_pdf(self, pdf_path: str) -> List[Tuple[str, int]]:
-        """Extract text from PDF with page numbers"""
-        pages = []
+# ================================
+# UTILITY FUNCTIONS
+# ================================
+def calculate_file_hash(filepath):
+    """Calculate MD5 hash of a file"""
+    hash_md5 = hashlib.md5()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def check_pdf_size(filepath):
+    """Check if PDF file size is within limits"""
+    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+    if size_mb > MAX_PDF_SIZE_MB:
+        print(f"⚠ PDF {Path(filepath).name} is {size_mb:.1f}MB (exceeds {MAX_PDF_SIZE_MB}MB limit)")
+        return False
+    return True
+
+
+def clean_text(text):
+    """Clean text content"""
+    # Remove excessive whitespace
+    text = ' '.join(text.split())
+    # Remove special characters that might cause issues
+    text = text.replace('\x00', '')  # Remove null characters
+    return text
+
+
+# ================================
+# LOAD OR CREATE TRACKER FOR NEW PDFs
+# ================================
+def load_seen_pdfs():
+    """Load the dictionary of processed PDF files with their hashes"""
+    if os.path.exists(SEEN_PDFS_FILE):
         try:
-            logger.info(f"📖 Extracting text from: {os.path.basename(pdf_path)}")
-            
-            with open(pdf_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                total_pages = len(pdf_reader.pages)
-                
-                logger.info(f"   📄 Total pages: {total_pages}")
-                
-                for page_num in range(total_pages):
-                    page = pdf_reader.pages[page_num]
-                    text = page.extract_text()
-                    
-                    if text and text.strip():
-                        # Clean the text
-                        text = text.strip()
-                        # Remove excessive whitespace
-                        text = ' '.join(text.split())
-                        pages.append((text, page_num + 1))
-                        
-                        # Log first page content for verification
-                        if page_num == 0:
-                            preview = text[:200]
-                            logger.info(f"   📋 Page 1 preview: '{preview}...'")
-                    
-                    # Progress logging
-                    if (page_num + 1) % 50 == 0:
-                        logger.info(f"   ⏳ Processed {page_num + 1}/{total_pages} pages...")
-                
-                logger.info(f"✅ Extracted {len(pages)} non-empty pages")
-                return pages
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to extract from {pdf_path}: {str(e)}")
-            return []
+            with open(SEEN_PDFS_FILE, "rb") as f:
+                return pickle.load(f)
+        except (pickle.PickleError, EOFError):
+            print("⚠ Could not load seen PDFs file, starting fresh...")
+            return {}
+    return {}
+
+
+def save_seen_pdfs(seen):
+    """Save the dictionary of processed PDF files with their hashes"""
+    try:
+        with open(SEEN_PDFS_FILE, "wb") as f:
+            pickle.dump(seen, f)
+        return True
+    except Exception as e:
+        print(f"❌ Error saving seen PDFs: {e}")
+        return False
+
+
+# ================================
+# LOAD PDF DOCUMENTS
+# ================================
+def load_new_pdfs(pdf_folder, seen_pdfs):
+    """Load new PDF files that haven't been processed yet"""
+    # Find all PDF files
+    pdf_paths = []
+    for ext in PDF_EXTENSIONS:
+        pdf_paths.extend(Path(pdf_folder).glob(f"*{ext}"))
     
-    def intelligent_chunking(self, pages: List[Tuple[str, int]], source_file: str) -> List[Dict]:
-        """Specialized chunking for constitutional/legal documents"""
-        documents = []
+    if not pdf_paths:
+        print("📘 No PDF files found in data directory")
+        return [], []
+    
+    new_pdfs = []
+    
+    for pdf in pdf_paths:
+        pdf_path = str(pdf)
+        pdf_name = pdf.name
         
-        # First pass: Try to preserve article/section boundaries
-        for text, page_num in pages:
-            # Split by common legal document markers
-            lines = text.split('\n')
-            current_chunk = []
-            current_chunk_start_page = page_num
+        # Check file size
+        if not check_pdf_size(pdf_path):
+            continue
             
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # Check if this line starts a new article/section
-                is_new_section = any(marker in line.upper() for marker in [
-                    'ARTICLE', 'SECTION', 'CHAPTER', 'PART',
-                    'CLAUSE', 'SUBSECTION', 'SCHEDULE'
-                ])
-                
-                # Check if line contains article numbers like "25A", "25-A", "25 A"
-                if any(marker in line for marker in ['Article', 'article']):
-                    # Extract potential article number
-                    import re
-                    article_match = re.search(r'Article\s+([0-9]+[A-Z]*)', line, re.IGNORECASE)
-                    if article_match:
-                        logger.debug(f"📌 Found article reference: {article_match.group(0)} on page {page_num}")
-                
-                # If we have content and hit a new section, save current chunk
-                if current_chunk and (is_new_section or len(' '.join(current_chunk)) > 800):
-                    chunk_text = ' '.join(current_chunk)
-                    if len(chunk_text) > 50:  # Only save meaningful chunks
-                        documents.append({
-                            "text": chunk_text,
-                            "metadata": {
-                                "source": source_file,
-                                "page": current_chunk_start_page,
-                                "type": "legal_chunk",
-                                "chunk_hash": hashlib.md5(chunk_text.encode()).hexdigest()[:8]
-                            }
-                        })
-                    
-                    # Start new chunk
-                    current_chunk = [line]
-                    current_chunk_start_page = page_num
-                else:
-                    current_chunk.append(line)
-            
-            # Don't forget the last chunk from this page
-            if current_chunk:
-                chunk_text = ' '.join(current_chunk)
-                if len(chunk_text) > 50:
-                    documents.append({
-                        "text": chunk_text,
-                        "metadata": {
-                            "source": source_file,
-                            "page": current_chunk_start_page,
-                            "type": "legal_chunk",
-                            "chunk_hash": hashlib.md5(chunk_text.encode()).hexdigest()[:8]
-                        }
-                    })
+        # Calculate file hash
+        file_hash = calculate_file_hash(pdf_path)
         
-        # Second pass: If no good chunks found, use standard text splitter
-        if len(documents) < 5:
-            logger.warning("⚠️ Few chunks found, using standard text splitter...")
-            all_text = ' '.join([text for text, _ in pages])
+        # Check if PDF is new or modified
+        if pdf_path in seen_pdfs:
+            if seen_pdfs[pdf_path] == file_hash:
+                # Already processed and unchanged
+                continue
+            else:
+                print(f"📄 Modified PDF: {pdf_name}")
+                new_pdfs.append((pdf_path, file_hash))
+        else:
+            print(f"🆕 New PDF: {pdf_name}")
+            new_pdfs.append((pdf_path, file_hash))
+    
+    if not new_pdfs:
+        print("📘 No new or modified PDFs found")
+        return [], []
+    
+    print(f"🔍 Found {len(new_pdfs)} new/modified PDFs")
+    
+    all_docs = []
+    
+    for pdf_path, pdf_hash in new_pdfs:
+        try:
+            pdf_name = Path(pdf_path).name
+            print(f"\n📄 Loading PDF: {pdf_name}")
+            loader = PyPDFLoader(pdf_path)
+            pages = loader.load()
             
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
-                separators=["\n\n", "\n", ". ", " ", ""],
-                length_function=len,
+            print(f"   ✅ Loaded {len(pages)} pages")
+            
+            # Add enhanced metadata
+            for i, page in enumerate(pages):
+                page.metadata[METADATA_SOURCE] = pdf_name
+                page.metadata[METADATA_PAGE] = i + 1
+                page.metadata["file_path"] = pdf_path
+                page.metadata["total_pages"] = len(pages)
+                page.metadata[METADATA_PDF_HASH] = pdf_hash
+            
+            all_docs.extend(pages)
+            
+        except Exception as e:
+            print(f"   ❌ Failed to load {Path(pdf_path).name}: {str(e)}")
+            continue
+    
+    return all_docs, new_pdfs
+
+
+# ================================
+# SPLITTING DOCUMENTS
+# ================================
+def split_docs(docs):
+    """Split documents into chunks for vector storage"""
+    print("\n🔪 Splitting documents into chunks...")
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        length_function=len,
+        separators=["\n\n", "\n", ". ", " ", ""]
+    )
+    
+    chunks = splitter.split_documents(docs)
+    print(f"📦 Total chunks created: {len(chunks)}")
+    
+    return chunks
+
+
+# ================================
+# EXTRACT ARTICLE NUMBERS FROM TEXT
+# ================================
+def extract_article_number_from_text(text):
+    """Try to extract article number from document text"""
+    import re
+    
+    patterns = [
+        r'article\s+(\d+[A-Z]*)',
+        r'art\.\s*(\d+[A-Z]*)',
+        r'article\s+(\d+)\s*\([a-zA-Z]+\)',
+        r'art\.\s*(\d+)\s*\([a-zA-Z]+\)',
+        r'\b(\d+[A-Z])\b',
+        r'article\s+(\d+)[\s\.]',
+        r'art\.\s*(\d+)[\s\.]'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            article_num = match.group(1).upper()
+            article_num = re.sub(r'\s+', '', article_num)
+            return article_num
+    
+    return None
+
+
+# ================================
+# PROCESS AND ADD METADATA TO CHUNKS
+# ================================
+def enhance_chunk_metadata(chunks):
+    """Add article number detection and other metadata to chunks"""
+    print("🔍 Enhancing chunk metadata...")
+    
+    article_counts = {}
+    
+    for i, chunk in enumerate(chunks):
+        # Add basic metadata
+        chunk.metadata[METADATA_CHUNK_ID] = i + 1
+        chunk.metadata[METADATA_CHUNK_INDEX] = i + 1
+        chunk.metadata[METADATA_TOTAL_CHUNKS] = len(chunks)
+        
+        # Clean text
+        chunk.page_content = clean_text(chunk.page_content)
+        
+        # Extract article number
+        text = chunk.page_content
+        article_num = extract_article_number_from_text(text[:1000])  # Check first 1000 chars
+        
+        if article_num:
+            chunk.metadata[METADATA_ARTICLE] = article_num
+            article_counts[article_num] = article_counts.get(article_num, 0) + 1
+        else:
+            chunk.metadata[METADATA_ARTICLE] = "unknown"
+    
+    # Log article statistics
+    if article_counts:
+        print(f"📊 Detected {len(article_counts)} unique articles")
+        top_articles = sorted(article_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        for article, count in top_articles:
+            print(f"   • Article {article}: {count} chunks")
+    
+    articles_found = sum(1 for c in chunks if c.metadata.get(METADATA_ARTICLE) != "unknown")
+    print(f"📊 Chunks with article numbers: {articles_found}/{len(chunks)}")
+    
+    return chunks
+
+
+# ================================
+# CREATE OR UPDATE CHROMA DATABASE
+# ================================
+def update_chroma_db(chunks, collection_name=COLLECTION_NAME):
+    """Update or create Chroma vector database"""
+    print("\n🧠 Loading embedding model...")
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name=EMBEDDINGS_MODEL)
+        print("✅ Embedding model loaded successfully")
+    except Exception as e:
+        print(f"❌ Failed to load embedding model: {str(e)}")
+        return None
+    
+    print("📚 Connecting to Chroma DB...")
+    
+    try:
+        # Check if Chroma DB exists
+        if CHROMA_DIR.exists() and any(CHROMA_DIR.iterdir()):
+            print("📂 Loading existing Chroma DB...")
+            # Load existing vector store
+            db = Chroma(
+                persist_directory=str(CHROMA_DIR),
+                embedding_function=embeddings,
+                collection_name=collection_name
             )
             
-            chunks = text_splitter.split_text(all_text)
-            documents = []
-            
-            for i, chunk in enumerate(chunks):
-                if len(chunk) > 50:
-                    documents.append({
-                        "text": chunk,
-                        "metadata": {
-                            "source": source_file,
-                            "page": "N/A",
-                            "type": "standard_chunk",
-                            "chunk_id": i
-                        }
-                    })
-        
-        logger.info(f"📊 Created {len(documents)} chunks from {source_file}")
-        
-        # Log sample chunks for verification
-        logger.info("📋 Sample chunks:")
-        for i, doc in enumerate(documents[:3]):
-            sample = doc['text'][:150]
-            page = doc['metadata']['page']
-            logger.info(f"   Chunk {i+1} (Page {page}): '{sample}...'")
-        
-        # Check if we have any article references
-        article_count = 0
-        for doc in documents:
-            if 'article' in doc['text'].lower() or 'Article' in doc['text']:
-                article_count += 1
-        
-        logger.info(f"📑 Found {article_count} chunks with article references")
-        
-        return documents
-    
-    def create_or_update_chromadb(self, documents: List[Dict]):
-        """Create or update ChromaDB with documents"""
-        try:
-            # Extract texts and metadatas
-            texts = [doc["text"] for doc in documents]
-            metadatas = [doc["metadata"] for doc in documents]
-            
-            # Check if ChromaDB exists
-            if os.path.exists(self.chroma_path) and os.listdir(self.chroma_path):
-                logger.info("📂 Loading existing ChromaDB...")
-                
-                # Get existing collection count
-                try:
-                    client = chromadb.PersistentClient(path=self.chroma_path)
-                    collection = client.get_collection(self.collection_name)
-                    existing_count = collection.count()
-                    logger.info(f"📚 Existing collection has {existing_count} documents")
-                except:
-                    existing_count = 0
-                
-                # Add to existing ChromaDB
-                vector_store = Chroma(
-                    persist_directory=self.chroma_path,
-                    embedding_function=self.embeddings,
-                    collection_name=self.collection_name
-                )
-                
-                # Add new documents
-                vector_store.add_texts(
-                    texts=texts,
-                    metadatas=metadatas
-                )
-                
-                logger.info(f"✅ Added {len(documents)} new chunks to existing DB")
-                
-            else:
-                logger.info("🆕 Creating new ChromaDB...")
-                
-                # Create new ChromaDB
-                vector_store = Chroma.from_texts(
-                    texts=texts,
-                    metadatas=metadatas,
-                    embedding=self.embeddings,
-                    persist_directory=self.chroma_path,
-                    collection_name=self.collection_name
-                )
-                
-                logger.info(f"✅ Created new DB with {len(documents)} chunks")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to update ChromaDB: {str(e)}")
-            return False
-    
-    def ingest_single_pdf(self, pdf_filename: str) -> bool:
-        """Ingest a single PDF file"""
-        pdf_path = os.path.join(self.data_path, pdf_filename)
-        
-        if not os.path.exists(pdf_path):
-            logger.error(f"❌ File not found: {pdf_path}")
-            return False
-        
-        logger.info(f"\n{'='*60}")
-        logger.info(f"🔄 PROCESSING: {pdf_filename}")
-        logger.info(f"{'='*60}")
-        
-        try:
-            # Extract text
-            pages = self.extract_text_from_pdf(pdf_path)
-            if not pages:
-                logger.error(f"❌ No text extracted from {pdf_filename}")
-                return False
-            
-            # Create chunks
-            documents = self.intelligent_chunking(pages, pdf_filename)
-            if not documents:
-                logger.error(f"❌ No chunks created from {pdf_filename}")
-                return False
-            
-            # Add to ChromaDB
-            success = self.create_or_update_chromadb(documents)
-            
-            if success:
-                logger.info(f"✅ Successfully ingested {pdf_filename}")
-            else:
-                logger.error(f"❌ Failed to add {pdf_filename} to ChromaDB")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"❌ Error processing {pdf_filename}: {str(e)}")
-            return False
-    
-    def ingest_all_pdfs(self):
-        """Ingest all PDFs in the data directory"""
-        try:
-            # Get all PDF files
-            pdf_files = []
-            for file in os.listdir(self.data_path):
-                if file.lower().endswith('.pdf'):
-                    pdf_files.append(file)
-            
-            if not pdf_files:
-                logger.error(f"❌ No PDF files found in {self.data_path}")
-                return False
-            
-            logger.info(f"📚 Found {len(pdf_files)} PDF files:")
-            for pdf in pdf_files:
-                logger.info(f"   📄 {pdf}")
-            
-            # Start with constitution file first (likely contains Article 25A)
-            constitution_files = [f for f in pdf_files if 'constitution' in f.lower()]
-            other_files = [f for f in pdf_files if f not in constitution_files]
-            
-            # Process constitution files first
-            files_to_process = constitution_files + other_files
-            
-            logger.info(f"\n🎯 Processing {len(files_to_process)} files...")
-            
-            success_count = 0
-            failed_files = []
-            
-            for pdf_file in files_to_process:
-                if self.ingest_single_pdf(pdf_file):
-                    success_count += 1
-                else:
-                    failed_files.append(pdf_file)
-            
-            # Summary
-            logger.info(f"\n{'='*60}")
-            logger.info("📊 INGESTION SUMMARY")
-            logger.info(f"{'='*60}")
-            logger.info(f"✅ Successfully ingested: {success_count}/{len(files_to_process)} files")
-            
-            if failed_files:
-                logger.info("❌ Failed files:")
-                for failed in failed_files:
-                    logger.info(f"   - {failed}")
-            
-            return success_count > 0
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to ingest PDFs: {str(e)}")
-            return False
-    
-    def verify_ingestion(self):
-        """Verify that content was properly ingested"""
-        try:
-            logger.info(f"\n🔍 VERIFYING CHROMADB")
-            logger.info(f"{'='*60}")
-            
-            if not os.path.exists(self.chroma_path):
-                logger.error("❌ ChromaDB not found")
-                return False
-            
-            # Load ChromaDB
-            vector_store = Chroma(
-                persist_directory=self.chroma_path,
-                embedding_function=self.embeddings,
-                collection_name=self.collection_name
-            )
-            
-            # Test search for Article 25A
-            test_queries = [
-                "Article 25A",
-                "25A",
-                "Right to education",
-                "free and compulsory education",
-                "Article 25 A",
-                "Article 25-A"
-            ]
-            
-            for query in test_queries:
-                logger.info(f"\n🔎 Searching for: '{query}'")
-                try:
-                    results = vector_store.similarity_search(query, k=3)
-                    
-                    if results:
-                        logger.info(f"✅ Found {len(results)} results")
-                        for i, doc in enumerate(results[:2]):
-                            content_preview = doc.page_content[:200].replace('\n', ' ')
-                            source = doc.metadata.get('source', 'Unknown')
-                            page = doc.metadata.get('page', 'N/A')
-                            logger.info(f"   Result {i+1} [{source}, Page {page}]:")
-                            logger.info(f"      '{content_preview}...'")
-                    else:
-                        logger.info(f"❌ No results found")
-                        
-                except Exception as e:
-                    logger.error(f"❌ Search error for '{query}': {str(e)}")
-            
-            # Get total count
+            # Get existing document count
             try:
-                client = chromadb.PersistentClient(path=self.chroma_path)
-                collection = client.get_collection(self.collection_name)
-                count = collection.count()
-                logger.info(f"\n📊 Total documents in ChromaDB: {count}")
-                
-                # List unique sources
-                results = collection.get(include=["metadatas"])
-                sources = set()
-                if results and "metadatas" in results:
-                    for metadata in results["metadatas"]:
-                        if metadata and "source" in metadata:
-                            sources.add(metadata["source"])
-                
-                logger.info("📁 Sources in database:")
-                for source in sorted(sources):
-                    logger.info(f"   - {source}")
-                    
-            except Exception as e:
-                logger.warning(f"⚠️ Could not get collection info: {str(e)}")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Verification failed: {str(e)}")
-            return False
+                existing_count = db._collection.count()
+                print(f"📊 Existing DB has {existing_count} document chunks")
+            except:
+                print("📊 Existing DB loaded")
+        else:
+            print("🆕 Creating new Chroma DB...")
+            # Create new vector store
+            db = Chroma.from_documents(
+                documents=chunks,
+                embedding=embeddings,
+                persist_directory=str(CHROMA_DIR),
+                collection_name=collection_name
+            )
+            print("✅ New Chroma DB created")
+        
+        print(f"\n💾 Adding {len(chunks)} chunks to vector database...")
+        
+        # Add documents in batches
+        total_added = 0
+        for i in range(0, len(chunks), BATCH_SIZE):
+            batch = chunks[i:i + BATCH_SIZE]
+            db.add_documents(batch)
+            total_added += len(batch)
+            if len(batch) < BATCH_SIZE:
+                print(f"   Added batch {i//BATCH_SIZE + 1}: {len(batch)} documents")
+            else:
+                print(f"   Added batch {i//BATCH_SIZE + 1}: {BATCH_SIZE} documents")
+        
+        print(f"✅ Added {total_added} new chunks")
+        
+        # Get final count
+        try:
+            final_count = db._collection.count()
+            print(f"📊 Total documents in collection: {final_count}")
+        except:
+            pass
+        
+        return db
+        
+    except Exception as e:
+        print(f"❌ Error during Chroma DB operation: {str(e)}")
+        return None
 
 
+# ================================
+# RESET DATABASE (Optional function)
+# ================================
+def reset_database():
+    """Reset the entire database - use with caution!"""
+    print("⚠  Resetting database...")
+    
+    if CHROMA_DIR.exists():
+        import shutil
+        shutil.rmtree(CHROMA_DIR)
+        print("✅ Chroma DB deleted")
+    
+    if SEEN_PDFS_FILE.exists():
+        os.remove(SEEN_PDFS_FILE)
+        print("✅ Seen PDFs file deleted")
+    
+    # Remove log file
+    if INGESTION_LOG_FILE.exists():
+        os.remove(INGESTION_LOG_FILE)
+        print("✅ Log file deleted")
+    
+    print("✅ Database reset complete")
+
+
+# ================================
+# MAIN INGEST FUNCTION
+# ================================
 def main():
-    """Main ingestion process"""
     print("\n" + "="*60)
-    print("📚 CONSTITUTIONAL DOCUMENTS INGESTOR")
-    print("="*60)
+    print("🚀 CONSTITUTION DOCUMENT INGESTION PIPELINE")
+    print("="*60 + "\n")
     
-    ingestor = ConstitutionalPDFIngestor()
+    print(f"📁 Data directory: {DATA_DIR}")
+    print(f"📁 Chroma directory: {CHROMA_DIR}")
+    print(f"📊 Chunk size: {CHUNK_SIZE}, Overlap: {CHUNK_OVERLAP}")
+    print(f"🏷️ Collection: {COLLECTION_NAME}")
     
-    # Step 1: Ingest all PDFs
-    print("\n🔄 Step 1: Ingesting all PDFs...")
-    success = ingestor.ingest_all_pdfs()
-    
-    if not success:
-        print("❌ Ingestion failed!")
+    # Check if data folder exists
+    if not DATA_DIR.exists():
+        print(f"\n❌ Data directory not found: {DATA_DIR}")
+        print(f"💡 Create the directory and put your PDFs in it.")
         return
     
-    # Step 2: Verify
-    print("\n🔄 Step 2: Verifying ingestion...")
-    ingestor.verify_ingestion()
+    # Check if there are any PDFs in the data folder
+    pdf_files = []
+    for ext in PDF_EXTENSIONS:
+        pdf_files.extend(list(DATA_DIR.glob(f"*{ext}")))
     
+    if not pdf_files:
+        print(f"\n❌ No PDF files found in '{DATA_DIR}' folder.")
+        print(f"💡 Put your PDF files in the data folder.")
+        return
+    
+    # Load seen PDFs
+    seen_pdfs = load_seen_pdfs()
+    print(f"\n📋 Currently tracking {len(seen_pdfs)} PDFs")
+    
+    # Load new PDFs
+    docs, new_pdfs_info = load_new_pdfs(DATA_DIR, seen_pdfs)
+    
+    if not docs:
+        print("\n✅ Ingestion completed - no new or modified PDFs")
+        
+        # Show database status
+        if CHROMA_DIR.exists() and any(CHROMA_DIR.iterdir()):
+            print("\n📊 Database Status:")
+            print(f"   PDFs in database: {len(seen_pdfs)}")
+            print(f"   Database location: {CHROMA_DIR}")
+            print(f"   Collection name: {COLLECTION_NAME}")
+        
+        print("\n💡 To add new PDFs:")
+        print("   1. Add new PDF files to the data folder")
+        print("   2. Run this script again")
+        return
+    
+    print(f"\n🔄 Processing {len(new_pdfs_info)} new/modified PDFs...")
+    
+    # Split into chunks
+    chunks = split_docs(docs)
+    
+    # Enhance metadata
+    chunks = enhance_chunk_metadata(chunks)
+    
+    # Update Chroma database
+    db = update_chroma_db(chunks)
+    
+    if db is None:
+        print("❌ Failed to update database")
+        return
+    
+    # Update seen PDFs with new hashes
+    for pdf_path, pdf_hash in new_pdfs_info:
+        seen_pdfs[pdf_path] = pdf_hash
+    
+    if save_seen_pdfs(seen_pdfs):
+        print(f"✅ Updated tracking for {len(new_pdfs_info)} PDFs")
+    
+    # Summary
     print("\n" + "="*60)
-    print("✅ INGESTION COMPLETE")
+    print("📊 INGESTION SUMMARY")
     print("="*60)
-    print("\n💡 Now test with:")
-    print("python -c \"from rag_chain import answer_question; print(answer_question('What does Article 25A say?'))\"")
+    print(f"• PDFs processed: {len(new_pdfs_info)}")
+    print(f"• Pages processed: {len(docs)}")
+    print(f"• Chunks created: {len(chunks)}")
+    print(f"• Articles detected: {sum(1 for c in chunks if c.metadata.get(METADATA_ARTICLE) != 'unknown')}")
+    print(f"• Collection: {COLLECTION_NAME}")
+    print(f"• Database location: {CHROMA_DIR}")
+    print("="*60)
+    
+    print("\n🎉 Ingestion completed successfully!")
+    print("🤖 Your chatbot can now answer from the updated knowledge base!")
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    # Check for reset command
+    if len(sys.argv) > 1 and sys.argv[1] == "--reset":
+        confirm = input("⚠ Are you sure you want to reset the database? This will delete ALL data! (y/n): ")
+        if confirm.lower() == 'y':
+            reset_database()
+            print("\n✅ Database reset. Now you can run 'python ingest.py' to start fresh.")
+        else:
+            print("❌ Reset cancelled.")
+    else:
+        main()

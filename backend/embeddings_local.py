@@ -1,66 +1,67 @@
 # embeddings_local.py
-from sentence_transformers import SentenceTransformer
+import os
 import logging
-import numpy as np
+from typing import List
+from sentence_transformers import SentenceTransformer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class LocalEmbeddings:
-    """Local embeddings using sentence-transformers (NO API NEEDED)"""
+    """Local embedding model for text similarity"""
     
-    def __init__(self, model_name="all-mpnet-base-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"): 
+        """
+        Initialize local embedding model
+        
+        Args:
+            model_name: Name of the SentenceTransformer model to use
+        """
+        self.model_name = model_name
+        logger.info(f"🔄 Loading local embedding model: {model_name}")
+        
         try:
-            logger.info(f"🔄 Loading local embedding model: {model_name}")
-            
-            # Load the model (will download automatically first time)
-            self.model = SentenceTransformer(f'sentence-transformers/{model_name}')
+            # Load the model
+            self.model = SentenceTransformer(model_name)
             
             # Test the model
             test_embedding = self.model.encode(["test"])
-            embedding_dim = test_embedding.shape[1]
+            self.dimension = test_embedding.shape[1]
             
             logger.info(f"✅ Model '{model_name}' loaded successfully")
-            logger.info(f"📏 Embedding dimension: {embedding_dim}")
+            logger.info(f"📏 Embedding dimension: {self.dimension}")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load model: {str(e)}")
-            logger.info("💡 Install: pip install sentence-transformers")
+            logger.error(f"❌ Failed to load model '{model_name}': {str(e)}")
             raise
     
-    def embed_documents(self, texts):
-        """Embed multiple documents"""
-        if isinstance(texts, str):
-            texts = [texts]
-        
-        if not texts:
-            return []
-        
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embed a list of documents"""
         logger.info(f"📤 Embedding {len(texts)} documents locally...")
         
         try:
-            # Generate embeddings
-            embeddings = self.model.encode(
-                texts,
-                convert_to_tensor=False,  # Return numpy array
-                normalize_embeddings=True,  # Normalize for cosine similarity
-                show_progress_bar=False,
-                batch_size=32
-            )
-            
+            embeddings = self.model.encode(texts, show_progress_bar=True if len(texts) > 10 else False)
             logger.info(f"✅ Generated {len(embeddings)} embeddings")
-            return embeddings.tolist()  # Convert to list for ChromaDB
+            return embeddings.tolist()
             
         except Exception as e:
-            logger.error(f"❌ Embedding failed: {str(e)}")
+            logger.error(f"❌ Failed to embed documents: {str(e)}")
             raise
     
-    def embed_query(self, text):
+    def embed_query(self, text: str) -> List[float]:
         """Embed a single query"""
         logger.info(f"🔍 Embedding query: {text[:50]}...")
-        result = self.embed_documents([text])[0]
-        logger.info("✅ Query embedded")
-        return result
+        
+        try:
+            embedding = self.model.encode([text], show_progress_bar=False)[0]
+            logger.info(f"✅ Query embedded")
+            return embedding.tolist()
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to embed query: {str(e)}")
+            raise
 
-# For backward compatibility with your existing code
-HuggingFaceEmbeddings = LocalEmbeddings
+# For backward compatibility
+def get_local_embeddings():
+    """Get local embeddings instance"""
+    return LocalEmbeddings()

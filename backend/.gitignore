@@ -2,3 +2,5 @@ __pycache__/
 .env
 chroma_db/
 data/
+embeddings/
+another_pdfs/

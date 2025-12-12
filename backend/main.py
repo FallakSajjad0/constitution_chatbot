@@ -1,4 +1,4 @@
-# main.py - UPDATED VERSION for /api/chat endpoint
+# main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -124,7 +124,7 @@ async def api_health_check():
             import chromadb
             try:
                 client = chromadb.PersistentClient(path="./chroma_db")
-                collection = client.get_collection("constitutional_docs")
+                collection = client.get_collection("pakistan_constitution")
                 pdf_count = collection.count()
             except:
                 pdf_count = 0
