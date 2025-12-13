@@ -1,8 +1,4 @@
-"""
-LLM Online - Groq API with updated working models
-Fixed: deepseek-r1-distill-llama-70b has been decommissioned
-"""
-
+# backend/llm_online.py
 import os
 import time
 from dotenv import load_dotenv
