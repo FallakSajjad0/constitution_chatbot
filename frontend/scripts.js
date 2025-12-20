@@ -1,4 +1,5 @@
-const BACKEND_URL = "http://localhost:8080/api/chat";
+// ONLY CHANGE MADE: Updated backend URL to match your setup
+const BACKEND_URL = "http://localhost:8000/chat";  // Changed from 8080 to 8000
 
 const chatContainer = document.getElementById("chat-container");
 const userInput = document.getElementById("user-input");
@@ -127,8 +128,6 @@ async function sendMessage() {
             headers: {
                 "Content-Type": "application/json",
             },
-
-            // ✅ FIXED — Must be "question", NOT "query"
             body: JSON.stringify({ question: text }),
         });
 

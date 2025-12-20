@@ -1,12 +1,14 @@
-# main.py
+"""
+MAIN FASTAPI APPLICATION FOR PAKISTAN CONSTITUTION ASSISTANT
+"""
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
-import logging
+from typing import Optional, List
 import uvicorn
+import logging
 import os
-import re
+import time
 
 # Import our RAG system
 from rag_chain import answer_question, assistant
@@ -18,282 +20,376 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 # Pydantic models for request/response
 class ChatRequest(BaseModel):
     question: str
-    session_id: str = "default"
+    session_id: Optional[str] = "default"
+    user_name: Optional[str] = None
 
 class ChatResponse(BaseModel):
+    question: str
     answer: str
     success: bool = True
-    error: str = None
+    error: Optional[str] = None
     processing_time: float = None
 
 class HealthResponse(BaseModel):
     status: str
     ready: bool
-    pdf_count: int = 0
-    error: str = None
+    database_loaded: bool = False
+    document_count: int = 0
+    llm_available: bool = False
+    error: Optional[str] = None
 
 class SystemInfo(BaseModel):
+    service: str
+    version: str = "2.0.0"
     status: str
-    version: str = "1.0.0"
-    service: str = "Pakistan Constitution Assistant"
-    endpoints: list
+    endpoints: List[dict]
+    features: List[str]
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Pakistan Constitution Assistant API",
-    description="API for asking questions about the Constitution of Pakistan",
-    version="1.0.0",
+    title="Pakistan Constitution AI Assistant",
+    description="API for asking questions about Pakistan's Constitution with structured responses",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/api/openapi.json"  # ✅ Added for API prefix compatibility
 )
 
-# CORS middleware - update with your frontend URLs
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",    # React default
-        "http://127.0.0.1:3000",
-        "http://localhost:5500",    # Python HTTP server
-        "http://127.0.0.1:5500",
-        "http://localhost:8080",    # Your backend port
-        "http://127.0.0.1:8080",
-        "http://localhost:8000",    # Alternative port
-    ],
+    allow_origins=["*"],  # Allow all origins for development
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Global initialization flag
-rag_initialized = False
+system_initialized = False
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize RAG system on startup"""
-    global rag_initialized
+    """Initialize the system on startup"""
+    global system_initialized
     try:
         logger.info("🚀 Starting Pakistan Constitution Assistant...")
         
-        # Check if ChromaDB exists
-        if not os.path.exists("./chroma_db"):
-            logger.error("❌ ChromaDB not found! Please run ingest.py first.")
-            rag_initialized = False
-            return
-        
         # Initialize the assistant
+        logger.info("📚 Initializing RAG system...")
         assistant.initialize()
         
-        # Test the system
+        # Test with a simple question
+        logger.info("🧪 Testing system with sample question...")
         test_response = answer_question("hello")
-        logger.info(f"✅ System test: {test_response[:50]}...")
         
-        rag_initialized = True
-        logger.info("✅ RAG system initialized and ready!")
-        
+        if test_response:
+            system_initialized = True
+            logger.info("✅ System initialized successfully!")
+            logger.info(f"📝 Test response: {test_response[:100]}...")
+        else:
+            logger.error("❌ System test failed - no response received")
+            system_initialized = False
+            
+    except FileNotFoundError as e:
+        logger.error(f"❌ Database not found: {e}")
+        logger.info("💡 Please run: python backend/ingest.py")
+        system_initialized = False
     except Exception as e:
-        logger.error(f"❌ Failed to initialize RAG system: {str(e)}")
-        rag_initialized = False
-        raise
+        logger.error(f"❌ Failed to initialize system: {str(e)}")
+        system_initialized = False
 
-# ✅ API PREFIX ROUTES
-@app.get("/api/", response_model=SystemInfo)
-async def api_root():
-    """Root endpoint with system information (with /api/ prefix)"""
+@app.get("/", response_model=SystemInfo)
+async def root():
+    """Root endpoint with system information"""
     return SystemInfo(
-        status="online" if rag_initialized else "initializing",
+        service="Pakistan Constitution AI Assistant",
+        status="online" if system_initialized else "initializing",
         endpoints=[
-            {"method": "GET", "path": "/api/", "description": "System information"},
-            {"method": "GET", "path": "/api/health", "description": "Health check"},
-            {"method": "POST", "path": "/api/chat", "description": "Ask questions about Constitution"},
-            {"method": "GET", "path": "/api/stats", "description": "Get PDF statistics"}
+            {"method": "GET", "path": "/", "description": "System information"},
+            {"method": "GET", "path": "/health", "description": "Health check"},
+            {"method": "POST", "path": "/ask", "description": "Ask constitutional questions"},
+            {"method": "GET", "path": "/examples", "description": "Example questions"}
+        ],
+        features=[
+            "Structured constitutional answers",
+            "Greeting detection (Assalamualaikum, Hello, etc.)",
+            "Name recognition and personalization",
+            "General conversation handling",
+            "Clean formatting without symbols",
+            "PDF-based constitutional content",
+            "Conversation memory"
         ]
     )
 
-@app.get("/api/health", response_model=HealthResponse)
-async def api_health_check():
-    """Health check endpoint (with /api/ prefix)"""
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check endpoint"""
     try:
-        if rag_initialized:
-            # Try to get some stats
-            import chromadb
+        if system_initialized:
+            # Get database stats if possible
+            document_count = 0
+            database_loaded = False
+            
             try:
-                client = chromadb.PersistentClient(path="./chroma_db")
-                collection = client.get_collection("pakistan_constitution")
-                pdf_count = collection.count()
+                if assistant.vector_store:
+                    # Try different methods to get count
+                    try:
+                        document_count = assistant.vector_store._collection.count()
+                    except:
+                        all_docs = assistant.vector_store.get()
+                        document_count = len(all_docs['ids']) if 'ids' in all_docs else 0
+                    database_loaded = document_count > 0
             except:
-                pdf_count = 0
+                pass
+            
+            llm_available = assistant.llm is not None
             
             return HealthResponse(
                 status="healthy",
                 ready=True,
-                pdf_count=pdf_count
+                database_loaded=database_loaded,
+                document_count=document_count,
+                llm_available=llm_available
             )
         else:
             return HealthResponse(
                 status="initializing",
                 ready=False,
-                error="RAG system not initialized. Run ingest.py first."
+                database_loaded=False,
+                llm_available=False,
+                error="System not fully initialized. Check logs for details."
             )
     except Exception as e:
-        logger.error(f"❌ Health check error: {str(e)}")
+        logger.error(f"Health check error: {str(e)}")
         return HealthResponse(
             status="error",
             ready=False,
             error=str(e)
         )
 
-@app.get("/api/stats")
-async def api_get_stats():
-    """Get PDF statistics (with /api/ prefix)"""
-    try:
-        if not rag_initialized:
-            raise HTTPException(status_code=503, detail="System not initialized")
-        
-        import chromadb
-        client = chromadb.PersistentClient(path="./chroma_db")
-        collection = client.get_collection("constitutional_docs")
-        
-        # Get all documents
-        all_docs = collection.get()
-        
-        # Count sources
-        sources = {}
-        if all_docs['metadatas']:
-            for metadata in all_docs['metadatas']:
-                if metadata and 'source' in metadata:
-                    source = metadata['source']
-                    sources[source] = sources.get(source, 0) + 1
-        
-        # Find unique articles
-        articles_found = set()
-        for doc in all_docs['documents'][:1000]:  # Check first 1000 docs
-            article_matches = re.findall(r'Article\s+(\d+[A-Z\-]*)', doc, re.IGNORECASE)
-            for match in article_matches:
-                articles_found.add(match.upper())
-        
-        return {
-            "status": "success",
-            "total_chunks": collection.count(),
-            "pdf_files": len(sources),
-            "sources": [{"name": name, "chunks": count} for name, count in sources.items()][:10],
-            "articles_found": sorted(list(articles_found))[:20],
-            "system_ready": rag_initialized
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Stats error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/examples")
+async def get_examples():
+    """Get example questions"""
+    examples = {
+        "greetings": [
+            "Assalamualaikum",
+            "Hello",
+            "Good morning",
+            "How are you?",
+            "Salam"
+        ],
+        "name_handling": [
+            "My name is Ahmed",
+            "Call me sir",
+            "Whats my name?",
+            "You can call me Ali"
+        ],
+        "general_conversation": [
+            "How's it going?",
+            "Tell me about yourself",
+            "What can you do?",
+            "Who created you?"
+        ],
+        "constitutional_questions": [
+            "What is Article 25A?",
+            "Explain Article 19",
+            "Tell me about freedom of speech",
+            "What does the Constitution say about education?",
+            "Explain right to equality",
+            "Article 14 explanation"
+        ],
+        "follow_up_questions": [
+            "Can you explain further?",
+            "What else about this?",
+            "Tell me more details",
+            "How is this implemented?"
+        ]
+    }
+    return {
+        "message": "Try these example questions:",
+        "examples": examples,
+        "tips": [
+            "Use clear, simple English",
+            "Include article numbers for specific queries",
+            "You can ask follow-up questions",
+            "System remembers your name if you provide it"
+        ]
+    }
 
-@app.post("/api/chat", response_model=ChatResponse)
-async def api_chat(request: ChatRequest):
-    """Main chat endpoint - ask questions about Constitution (with /api/ prefix)"""
-    import time
-    
+@app.post("/ask", response_model=ChatResponse)
+async def ask_question(request: ChatRequest):
+    """Main endpoint for asking constitutional questions"""
     start_time = time.time()
     
     try:
-        # Check if system is ready
-        if not rag_initialized:
+        # Validate input
+        if not request.question or not request.question.strip():
             raise HTTPException(
-                status_code=503,
-                detail="System not initialized. Please check if ingest.py was run."
+                status_code=400,
+                detail="Question cannot be empty"
             )
         
-        logger.info(f"📨 Question from {request.session_id}: {request.question}")
+        # Check if system is ready
+        if not system_initialized:
+            raise HTTPException(
+                status_code=503,
+                detail="System is initializing. Please try again in a moment."
+            )
         
-        # Get answer from our RAG system
+        logger.info(f"📥 Question: {request.question[:100]}...")
+        
+        # Get answer from RAG system
         answer = answer_question(request.question)
         
         processing_time = time.time() - start_time
         
-        logger.info(f"✅ Answered in {processing_time:.2f}s: {answer[:100]}...")
+        logger.info(f"✅ Answered in {processing_time:.2f} seconds")
         
         return ChatResponse(
+            question=request.question,
             answer=answer,
             success=True,
             processing_time=processing_time
         )
         
-    except HTTPException:
-        raise
+    except HTTPException as he:
+        raise he
     except Exception as e:
         processing_time = time.time() - start_time
-        logger.error(f"❌ Chat error: {str(e)}")
+        logger.error(f"❌ Error processing question: {str(e)}")
+        
+        # Provide user-friendly error response
+        error_message = f"I encountered an error while processing your question: '{request.question}'. "
+        error_message += "Please try rephrasing your question or ask about a different constitutional topic."
         
         return ChatResponse(
-            answer=f"Sorry, I encountered an error: {str(e)[:200]}",
+            question=request.question,
+            answer=error_message,
             success=False,
             error=str(e),
             processing_time=processing_time
         )
 
-@app.post("/api/batch")
-async def api_batch_chat(requests: list[ChatRequest]):
-    """Batch processing endpoint for multiple questions (with /api/ prefix)"""
-    responses = []
+@app.post("/chat", response_model=ChatResponse)
+async def chat_legacy(request: ChatRequest):
+    """Legacy endpoint for backward compatibility"""
+    return await ask_question(request)
+
+@app.get("/clear_memory")
+async def clear_memory():
+    """Clear conversation memory"""
+    try:
+        if hasattr(assistant, 'user_name'):
+            old_name = assistant.user_name
+            assistant.user_name = None
+            assistant.conversation_history = []
+            
+            logger.info(f"🧹 Memory cleared for user: {old_name}")
+            
+            return {
+                "success": True,
+                "message": f"Conversation memory cleared. Goodbye {old_name}!" if old_name else "Conversation memory cleared."
+            }
+        else:
+            return {
+                "success": True,
+                "message": "Memory system not initialized yet."
+            }
+    except Exception as e:
+        logger.error(f"Error clearing memory: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/memory_status")
+async def memory_status():
+    """Get current memory status"""
+    try:
+        status = {
+            "user_name": assistant.user_name,
+            "conversation_count": len(assistant.conversation_history),
+            "system_initialized": system_initialized
+        }
+        
+        if assistant.conversation_history:
+            recent_questions = [
+                {
+                    "question": item.get("question", "")[:50],
+                    "time": item.get("timestamp", "")
+                }
+                for item in assistant.conversation_history[-5:]
+            ]
+            status["recent_conversations"] = recent_questions
+        
+        return status
+    except Exception as e:
+        return {
+            "error": str(e),
+            "user_name": None,
+            "conversation_count": 0
+        }
+
+@app.get("/test")
+async def test_endpoint():
+    """Test endpoint to verify system is working"""
+    test_questions = [
+        "Assalamualaikum",
+        "My name is TestUser",
+        "What is Article 25A?",
+        "Hello"
+    ]
     
-    for request in requests:
+    results = []
+    
+    for question in test_questions:
         try:
-            response = await api_chat(request)
-            responses.append({
-                "question": request.question,
-                "answer": response.answer,
-                "success": response.success,
-                "processing_time": response.processing_time
+            start_time = time.time()
+            answer = answer_question(question)
+            processing_time = time.time() - start_time
+            
+            results.append({
+                "question": question,
+                "answer_preview": answer[:100] + ("..." if len(answer) > 100 else ""),
+                "length": len(answer),
+                "processing_time": round(processing_time, 2),
+                "success": True
             })
         except Exception as e:
-            responses.append({
-                "question": request.question,
-                "answer": f"Error: {str(e)}",
-                "success": False,
-                "error": str(e)
+            results.append({
+                "question": question,
+                "error": str(e),
+                "success": False
             })
     
     return {
-        "status": "completed",
-        "total_questions": len(requests),
-        "successful": sum(1 for r in responses if r["success"]),
-        "responses": responses
+        "system_status": "online" if system_initialized else "offline",
+        "test_results": results,
+        "total_tests": len(test_questions),
+        "successful_tests": sum(1 for r in results if r.get("success", False))
     }
 
-# ✅ KEEP OLD ENDPOINTS FOR BACKWARD COMPATIBILITY
-@app.get("/", response_model=SystemInfo)
-async def root():
-    """Legacy root endpoint"""
-    return await api_root()
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Legacy health endpoint"""
-    return await api_health_check()
-
-@app.get("/stats")
-async def get_stats():
-    """Legacy stats endpoint"""
-    return await api_get_stats()
-
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Legacy chat endpoint"""
-    return await api_chat(request)
-
 if __name__ == "__main__":
-    # Get port from environment or use default
-    port = int(os.getenv("PORT", 8080))  # ✅ Changed to 8080 to match your frontend
+    # Get configuration
     host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8000))
     
-    logger.info(f"🌐 Starting server on {host}:{port}")
-    logger.info(f"📚 Pakistan Constitution Assistant API")
-    logger.info(f"📄 Docs available at: http://{host}:{port}/docs")
-    logger.info(f"📡 API endpoints prefixed with: /api/")
-    logger.info(f"💬 Chat endpoint: POST http://{host}:{port}/api/chat")
+    print("\n" + "="*70)
+    print("🇵🇰 PAKISTAN CONSTITUTION AI ASSISTANT API")
+    print("="*70)
+    print(f"🌐 Server: http://{host}:{port}")
+    print(f"📚 API Documentation: http://{host}:{port}/docs")
+    print(f"🔧 Health Check: http://{host}:{port}/health")
+    print(f"💬 Main Endpoint: POST http://{host}:{port}/ask")
+    print("\n📋 Example curl command:")
+    print(f'curl -X POST http://{host}:{port}/ask \\')
+    print('  -H "Content-Type: application/json" \\')
+    print('  -d \'{"question": "What is Article 25A?"}\'')
+    print("\n" + "="*70)
     
+    # Start the server
     uvicorn.run(
         app,
         host=host,
@@ -301,4 +397,3 @@ if __name__ == "__main__":
         reload=True,  # Auto-reload during development
         log_level="info"
     )
-    
