@@ -1,8 +1,29 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
+# Virtual environments
+venv/
+.env/
+myenv/
+myenv310/
+myvenv310/
+
+# Vector DB & data (CRITICAL)
 chroma_db/
 data/
-.env
-.git
+logs/
+
+# HuggingFace / cache
+.cache/
+.cache/huggingface/
+.cache/torch/
+
+# Git
+.git/
+.gitignore
+
+# OS
+.DS_Store
