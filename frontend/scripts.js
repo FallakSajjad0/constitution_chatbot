@@ -1,5 +1,4 @@
-// ONLY CHANGE MADE: Updated backend URL to match your setup
-const BACKEND_URL = "http://localhost:8000/chat";  // Changed from 8080 to 8000
+const BACKEND_URL = "http://localhost:8000/chat";
 
 const chatContainer = document.getElementById("chat-container");
 const userInput = document.getElementById("user-input");
@@ -8,160 +7,119 @@ const newChatBtn = document.getElementById("new-chat-btn");
 const historySection = document.getElementById("history-section");
 const sidebar = document.getElementById("sidebar");
 const toggleSidebarBtn = document.getElementById("toggle-sidebar");
+const overlay = document.getElementById("overlay");
 
 let chatHistory = [];
 let currentChatId = null;
 
-// Load chat history
 function loadChatHistory() {
     historySection.innerHTML = '<div class="history-label">Today</div>';
 
     chatHistory.forEach((chat, index) => {
         const item = document.createElement("div");
-        item.classList.add("history-item");
+        item.className = "history-item";
         if (index === currentChatId) item.classList.add("active");
 
-        const textSpan = document.createElement("span");
-        textSpan.classList.add("history-item-text");
-        textSpan.innerHTML = `💬 ${chat.title}`;
-        textSpan.onclick = () => loadChat(index);
+        item.innerHTML = `
+            <span class="history-item-text">💬 ${chat.title}</span>
+            <button class="delete-chat-btn">🗑️</button>
+        `;
 
-        const deleteBtn = document.createElement("button");
-        deleteBtn.classList.add("delete-chat-btn");
-        deleteBtn.innerHTML = "🗑️";
-        deleteBtn.onclick = (e) => {
+        item.onclick = () => loadChat(index);
+        item.querySelector("button").onclick = (e) => {
             e.stopPropagation();
             deleteChat(index);
         };
 
-        item.appendChild(textSpan);
-        item.appendChild(deleteBtn);
         historySection.appendChild(item);
     });
 }
 
-function deleteChat(chatId) {
-    if (chatHistory.length === 1) {
-        alert("You must have at least one chat!");
-        return;
-    }
-
-    if (confirm("Are you sure you want to delete this chat?")) {
-        chatHistory.splice(chatId, 1);
-
-        if (currentChatId === chatId) {
-            currentChatId = Math.max(0, chatId - 1);
-            loadChat(currentChatId);
-        } else if (currentChatId > chatId) {
-            currentChatId--;
-        }
-
-        loadChatHistory();
-    }
-}
-
 function createNewChat() {
-    const chatId = chatHistory.length;
-
-    chatHistory.push({
-        id: chatId,
-        title: "New Chat",
-        messages: []
-    });
-
-    currentChatId = chatId;
+    const id = chatHistory.length;
+    chatHistory.push({ id, title: "New Chat", messages: [] });
+    currentChatId = id;
 
     chatContainer.innerHTML =
-        '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Ask anything from the Pakistan Constitution PDF.</div>';
+        `<div class="message bot">👋 Hello! I'm your Constitution AI Assistant.</div>`;
 
     loadChatHistory();
 }
 
-function loadChat(chatId) {
-    currentChatId = chatId;
-    const chat = chatHistory[chatId];
-
+function loadChat(id) {
+    currentChatId = id;
     chatContainer.innerHTML =
-        '<div class="message bot">👋 Hello! I\'m your Constitution AI Assistant. Ask anything from the Pakistan Constitution PDF.</div>';
+        `<div class="message bot">👋 Hello! I'm your Constitution AI Assistant.</div>`;
 
-    chat.messages.forEach(msg => addMessage(msg.text, msg.sender, false, false));
+    chatHistory[id].messages.forEach(m =>
+        addMessage(m.text, m.sender, false, false)
+    );
 
     loadChatHistory();
 }
 
-function addMessage(text, sender, isThinking = false, save = true) {
+function addMessage(text, sender, thinking = false, save = true) {
     const msg = document.createElement("div");
-    msg.classList.add("message", sender);
-    if (isThinking) msg.classList.add("thinking");
+    msg.className = `message ${sender}`;
+    if (thinking) msg.classList.add("thinking");
     msg.innerText = text;
 
     chatContainer.appendChild(msg);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: "smooth" });
 
     if (save && currentChatId !== null) {
         chatHistory[currentChatId].messages.push({ text, sender });
 
         if (sender === "user" && chatHistory[currentChatId].title === "New Chat") {
-            chatHistory[currentChatId].title =
-                text.substring(0, 30) + (text.length > 30 ? "..." : "");
+            chatHistory[currentChatId].title = text.slice(0, 30) + "...";
             loadChatHistory();
         }
     }
-
     return msg;
 }
 
 async function sendMessage() {
     const text = userInput.value.trim();
-    if (text === "") return;
+    if (!text) return;
 
     if (currentChatId === null) createNewChat();
 
     addMessage(text, "user");
     userInput.value = "";
 
-    const thinkingMsg = addMessage("⏳ Thinking...", "bot", true, false);
+    const thinking = addMessage("⏳ Thinking...", "bot", true, false);
 
     try {
-        const response = await fetch(BACKEND_URL, {
+        const res = await fetch(BACKEND_URL, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ question: text }),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: text })
         });
 
-        const data = await response.json();
-
-        thinkingMsg.remove();
-        addMessage(data.answer || "No response available.", "bot");
-
-    } catch (error) {
-        thinkingMsg.remove();
-        addMessage("⚠️ Error connecting to backend. Make sure server is running.", "bot");
-        console.error("Backend error:", error);
+        const data = await res.json();
+        thinking.remove();
+        addMessage(data.answer || "No response.", "bot");
+    } catch {
+        thinking.remove();
+        addMessage("⚠️ Backend not reachable.", "bot");
     }
 }
 
-toggleSidebarBtn.addEventListener("click", () => {
+/* Sidebar mobile behavior */
+toggleSidebarBtn.onclick = () => {
     sidebar.classList.toggle("open");
-});
+    overlay.classList.toggle("open");
+};
 
-document.addEventListener("click", (e) => {
-    if (
-        window.innerWidth <= 768 &&
-        sidebar.classList.contains("open") &&
-        !sidebar.contains(e.target) &&
-        e.target !== toggleSidebarBtn
-    ) {
-        sidebar.classList.remove("open");
-    }
-});
+overlay.onclick = () => {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("open");
+};
 
-newChatBtn.addEventListener("click", createNewChat);
-sendBtn.addEventListener("click", sendMessage);
+sendBtn.onclick = sendMessage;
+newChatBtn.onclick = createNewChat;
 
-userInput.addEventListener("keypress", (e) => {
+userInput.addEventListener("keydown", e => {
     if (e.key === "Enter") sendMessage();
 });
 

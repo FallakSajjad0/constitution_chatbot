@@ -4,16 +4,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#01411C">
+
     <title>Pakistan Constitution AI Assistant</title>
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/x-icon" href="assets/favicon.ico">
 </head>
 
 <body>
+
     <button class="toggle-sidebar" id="toggle-sidebar">☰</button>
 
     <div class="app-container">
+
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
@@ -21,57 +26,50 @@
                     <div class="logo-icon">⚖️</div>
                     <div class="logo-text">Constitution AI</div>
                 </div>
+
                 <button class="new-chat-btn" id="new-chat-btn">
                     <span>+</span>
                     New Chat
                 </button>
             </div>
 
-            <div class="history-section" id="history-section">
-                <!-- Dynamic content will be loaded here -->
-            </div>
+            <div class="history-section" id="history-section"></div>
 
             <div class="sidebar-footer">
-                <div class="status-indicator" id="status-indicator">
-                    <span class="status-dot"></span>
+                <div class="status-indicator">
+                    <span class="status-dot connecting"></span>
                     <span class="status-text">Connecting...</span>
                 </div>
             </div>
         </div>
 
-        <!-- Main Chat Area -->
+        <!-- Chat Area -->
         <div class="chat-wrapper">
+
             <div class="chat-header">
                 <div class="chat-title">
                     <h1>🇵🇰 Pakistan Constitution AI Assistant</h1>
                     <p>Ask me anything about the Constitution of Pakistan</p>
                 </div>
+
                 <div class="header-actions">
-                    <button class="header-btn" id="export-btn" title="Export Chat">
-                        📥 Export
-                    </button>
-                    <button class="header-btn" id="clear-btn" title="Clear Chat">
-                        🧹 Clear
-                    </button>
+                    <button class="header-btn" id="export-btn">📥 Export</button>
+                    <button class="header-btn" id="clear-btn">🧹 Clear</button>
                 </div>
             </div>
 
-            <div id="chat-container">
-                <!-- Messages will be loaded here -->
-            </div>
+            <div id="chat-container"></div>
 
             <div id="input-area">
                 <div class="input-actions">
-                    <button class="file-upload-btn" id="file-upload-btn" title="Upload File">
-                        📎
-                    </button>
-                    <button class="voice-btn" id="voice-btn" title="Voice Input">
-                        🎤
-                    </button>
+                    <button class="file-upload-btn">📎</button>
+                    <button class="voice-btn">🎤</button>
                 </div>
+
                 <input id="user-input" type="text" placeholder="Type your question about Pakistan's Constitution..."
                     autocomplete="off" maxlength="1000">
-                <button id="send-btn" disabled>
+
+                <button id="send-btn">
                     <span class="send-text">Send</span>
                     <span class="send-icon">➤</span>
                 </button>
@@ -79,11 +77,11 @@
         </div>
     </div>
 
-    <!-- Toast notifications container -->
-    <div id="toast-container"></div>
-
-    <!-- Overlay for mobile sidebar -->
+    <!-- Overlay -->
     <div class="overlay" id="overlay"></div>
+
+    <!-- Toasts -->
+    <div id="toast-container"></div>
 
     <script src="scripts.js"></script>
 </body>

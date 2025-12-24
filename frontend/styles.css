@@ -840,3 +840,51 @@ body {
         transform: translateY(-4px);
     }
 }
+
+/* ========================= */
+/* MOBILE & RESPONSIVE FIXES */
+/* ========================= */
+
+@media (max-width: 480px) {
+    #input-area {
+        padding: 12px;
+        gap: 8px;
+    }
+
+    #user-input {
+        font-size: 14px;
+        padding: 14px 18px;
+    }
+
+    #send-btn {
+        padding: 14px 18px;
+    }
+
+    .send-text {
+        display: none;
+    }
+}
+
+/* Prevent page scroll on mobile */
+@media (max-width: 768px) {
+    body {
+        overflow: hidden;
+    }
+
+    .app-container {
+        height: 100vh;
+        border-radius: 0;
+    }
+
+    button {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+/* Safe area for iOS keyboard */
+@supports (padding: env(safe-area-inset-bottom)) {
+    #input-area {
+        padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+}
